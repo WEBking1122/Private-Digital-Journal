@@ -237,6 +237,62 @@ service cloud.firestore {
         color: var(--color-journal-muted);
       }
 
+      /* ─── Mood buttons ─── */
+      .mood-btn {
+        width: 48px;
+        height: 48px;
+        font-size: 24px;
+        border: 2px solid var(--color-journal-border);
+        border-radius: 12px;
+        background: var(--color-journal-surface);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        flex-shrink: 0;
+      }
+
+      .mood-btn:hover {
+        border-color: var(--color-journal-amber);
+        transform: scale(1.05);
+      }
+
+      .mood-btn.mood-selected {
+        border-color: var(--color-journal-amber);
+        background: var(--color-journal-amber-lt);
+        box-shadow:
+          0 0 0 2px var(--color-journal-amber-md),
+          inset 0 0 0 3px var(--color-journal-amber);
+        transform: scale(1.15);
+      }
+
+      /* ─── Sparkline tooltip ─── */
+      .sparkline-tooltip {
+        position: absolute;
+        background: rgba(44, 40, 37, 0.92);
+        color: white;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 50;
+        backdrop-filter: blur(8px);
+      }
+
+      .sparkline-dot {
+        cursor: pointer;
+        transition:
+          r 0.2s ease,
+          filter 0.2s ease;
+      }
+
+      .sparkline-dot:hover {
+        filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.3));
+      }
+
       /* ─── Scrollbar refinement ─── */
       ::-webkit-scrollbar {
         width: 6px;
@@ -722,6 +778,24 @@ service cloud.firestore {
           </button>
         </div>
 
+        <!-- ── Mood Sparkline Widget ── -->
+        <div
+          id="mood-sparkline-container"
+          class="mb-6 rounded-xl p-4"
+          style="
+            background: var(--color-journal-surface);
+            border: 1px solid var(--color-journal-border);
+          "
+        >
+          <p
+            class="text-xs font-medium mb-3"
+            style="color: var(--color-journal-muted)"
+          >
+            Mood Trend (Last 10 entries)
+          </p>
+          <div id="mood-sparkline" style="min-height: 40px"></div>
+        </div>
+
         <!-- ── Dashboard loading state ── -->
         <div
           id="dashboard-loading"
@@ -905,6 +979,19 @@ service cloud.firestore {
           >
             <!-- Populated by JS -->
           </p>
+        </div>
+
+        <!-- Mood selector -->
+        <div class="mb-6">
+          <label
+            class="block text-xs font-medium mb-3"
+            style="color: var(--color-journal-muted)"
+          >
+            How are you feeling? <span style="opacity: 0.6">(optional)</span>
+          </label>
+          <div id="new-entry-mood-group" class="flex gap-2 flex-wrap">
+            <!-- Mood buttons dynamically populated by JS -->
+          </div>
         </div>
 
         <!-- Title input -->
@@ -1093,6 +1180,19 @@ service cloud.firestore {
                 font-style: italic;
               "
             ></p>
+          </div>
+        </div>
+
+        <!-- Mood selector -->
+        <div class="mb-6">
+          <label
+            class="block text-xs font-medium mb-3"
+            style="color: var(--color-journal-muted)"
+          >
+            How are you feeling? <span style="opacity: 0.6">(optional)</span>
+          </label>
+          <div id="edit-entry-mood-group" class="flex gap-2 flex-wrap">
+            <!-- Mood buttons dynamically populated by JS -->
           </div>
         </div>
 
@@ -1543,6 +1643,33 @@ service cloud.firestore {
         REFLECTION_PROMPTS[getDayOfYear() % REFLECTION_PROMPTS.length];
 
       // ─────────────────────────────────────────────────────────────────────────
+      // MOOD EMOJI & COLOR MAPPING
+      // ─────────────────────────────────────────────────────────────────────────
+      const MOOD_EMOJI = {
+        1: "😞",
+        2: "😕",
+        3: "😐",
+        4: "🙂",
+        5: "😄",
+      };
+
+      function getMoodEmoji(mood) {
+        return MOOD_EMOJI[mood] || "";
+      }
+
+      function getMoodColor(mood) {
+        // Gradient from red (1) to green (5)
+        const colors = {
+          1: "#ef4444", // red
+          2: "#f97316", // orange-red
+          3: "#eab308", // yellow
+          4: "#84cc16", // lime
+          5: "#22c55e", // green
+        };
+        return colors[mood] || "#9c9189";
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
       // APPLICATION STATE
       // ─────────────────────────────────────────────────────────────────────────
       const state = {
@@ -1551,6 +1678,7 @@ service cloud.firestore {
         currentEntryId: null,
         currentEntryData: null,
         previousScreen: null,
+        currentMood: null,
       };
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -1634,6 +1762,57 @@ service cloud.firestore {
       }
 
       // ─────────────────────────────────────────────────────────────────────────
+      // MOOD SELECTOR UI
+      // ─────────────────────────────────────────────────────────────────────────
+      function createMoodButtons(containerId, moods = [1, 2, 3, 4, 5]) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = "";
+
+        moods.forEach((mood) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "mood-btn";
+          btn.textContent = getMoodEmoji(mood);
+          btn.dataset.mood = mood;
+          btn.onclick = (e) => {
+            e.preventDefault();
+            handleMoodSelect(mood, containerId);
+          };
+          container.appendChild(btn);
+        });
+
+        // Set initial selection if state has currentMood
+        if (state.currentMood) {
+          updateMoodButtonStates(containerId);
+        }
+      }
+
+      function handleMoodSelect(mood, containerId) {
+        // Toggle: if clicking the same mood, deselect it
+        if (state.currentMood === mood) {
+          state.currentMood = null;
+        } else {
+          state.currentMood = mood;
+        }
+        updateMoodButtonStates(containerId);
+      }
+
+      function updateMoodButtonStates(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        container.querySelectorAll(".mood-btn").forEach((btn) => {
+          const mood = parseInt(btn.dataset.mood);
+          if (mood === state.currentMood) {
+            btn.classList.add("mood-selected");
+          } else {
+            btn.classList.remove("mood-selected");
+          }
+        });
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
       // FIREBASE AUTH ERROR MESSAGES
       // ─────────────────────────────────────────────────────────────────────────
       function getFriendlyAuthError(code) {
@@ -1703,6 +1882,104 @@ service cloud.firestore {
           year: "numeric",
         });
       }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // SPARKLINE RENDERING
+      // ─────────────────────────────────────────────────────────────────────────
+      function getMoodEntries(entries) {
+        // Filter entries that have a mood, take last 10, and return in chronological order (oldest first)
+        const moodEntries = entries
+          .filter((e) => e.mood && e.mood >= 1 && e.mood <= 5)
+          .slice(0, 10) // Last 10
+          .reverse(); // Oldest first for left-to-right plotting
+
+        return moodEntries;
+      }
+
+      function renderMoodSparkline(entries) {
+        const container = document.getElementById("mood-sparkline");
+        if (!container) return;
+
+        const moodEntries = getMoodEntries(entries);
+
+        if (moodEntries.length < 2) {
+          container.innerHTML =
+            '<p style="color: var(--color-journal-muted); font-size: 0.875rem;">Not enough data for sparkline</p>';
+          return;
+        }
+
+        // SVG dimensions
+        const width = 300;
+        const height = 40;
+        const padding = 8;
+        const innerWidth = width - 2 * padding;
+        const innerHeight = height - 2 * padding;
+
+        // Calculate points
+        const pointSpacing = innerWidth / (moodEntries.length - 1);
+        const points = moodEntries.map((entry, i) => ({
+          x: padding + i * pointSpacing,
+          y: padding + innerHeight - ((entry.mood - 1) / 4) * innerHeight,
+          mood: entry.mood,
+          date: entry.createdAt,
+        }));
+
+        // Build line path
+        let linePath = `M ${points[0].x} ${points[0].y}`;
+        for (let i = 1; i < points.length; i++) {
+          linePath += ` L ${points[i].x} ${points[i].y}`;
+        }
+
+        // Build SVG
+        let svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow: visible;">`;
+
+        // Draw line (light gray)
+        svg += `<polyline points="${points.map((p) => `${p.x},${p.y}`).join(" ")}" fill="none" stroke="#e8e2d9" stroke-width="1.5" stroke-linejoin="round"/>`;
+
+        // Draw dots with colors + hover support
+        points.forEach((p, i) => {
+          const color = getMoodColor(p.mood);
+          const dateStr = formatDateShort(p.date);
+          const emoji = getMoodEmoji(p.mood);
+
+          svg += `<circle class="sparkline-dot" cx="${p.x}" cy="${p.y}" r="3" fill="${color}" 
+                    data-index="${i}" data-date="${dateStr}" data-emoji="${emoji}" data-mood="${p.mood}"
+                    style="cursor: pointer; transition: r 0.2s ease; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));"
+                    onmouseover="this.setAttribute('r', '5'); showSparklineTooltip(event, '${emoji}', '${dateStr}');"
+                    onmouseout="this.setAttribute('r', '3'); hideSparklineTooltip();"
+                  />`;
+        });
+
+        svg += `</svg>`;
+
+        container.innerHTML = svg;
+      }
+
+      function showSparklineTooltip(e, emoji, dateStr) {
+        let tooltip = document.getElementById("sparkline-tooltip");
+        if (!tooltip) {
+          tooltip = document.createElement("div");
+          tooltip.id = "sparkline-tooltip";
+          tooltip.className = "sparkline-tooltip";
+          document.body.appendChild(tooltip);
+        }
+
+        const rect = e.target.getBoundingClientRect();
+        tooltip.textContent = `${emoji} ${dateStr}`;
+        tooltip.style.left = rect.left - tooltip.offsetWidth / 2 + 6 + "px";
+        tooltip.style.top = rect.top - 40 + "px";
+        tooltip.style.display = "block";
+      }
+
+      function hideSparklineTooltip() {
+        const tooltip = document.getElementById("sparkline-tooltip");
+        if (tooltip) {
+          tooltip.style.display = "none";
+        }
+      }
+
+      window.showSparklineTooltip = showSparklineTooltip;
+      window.hideSparklineTooltip = hideSparklineTooltip;
 
       // ─────────────────────────────────────────────────────────────────────────
       // AUTHENTICATION HANDLERS
@@ -1785,6 +2062,7 @@ service cloud.firestore {
           state.entries = [];
           state.currentEntryId = null;
           state.currentEntryData = null;
+          state.currentMood = null;
 
           document.getElementById("login-email").value = "";
           document.getElementById("login-password").value = "";
@@ -1844,6 +2122,9 @@ service cloud.firestore {
           const entries = await loadEntries();
           document.getElementById("dashboard-loading").classList.add("hidden");
 
+          // Render sparkline
+          renderMoodSparkline(entries);
+
           if (entries.length === 0) {
             document.getElementById("empty-state").classList.remove("hidden");
             document.getElementById("entry-count-label").textContent = "";
@@ -1881,6 +2162,10 @@ service cloud.firestore {
           const bodyHtml = preview
             ? escapeHtml(preview)
             : '<span style="opacity:0.4">No content yet…</span>';
+          const moodEmoji = entry.mood ? getMoodEmoji(entry.mood) : "";
+          const moodDisplay = moodEmoji
+            ? `<span style="font-size: 1.5rem;">${moodEmoji}</span>`
+            : "";
 
           const card = document.createElement("div");
           card.className = "entry-card rounded-2xl p-5";
@@ -1893,12 +2178,15 @@ service cloud.firestore {
 
           card.innerHTML = `
           <div class="flex items-start justify-between gap-3 mb-2">
-            <h3 class="text-base font-semibold leading-snug flex-1 min-w-0"
-                style="font-family: var(--font-serif); color: var(--color-journal-ink);">
-              ${title}
-            </h3>
-            <span class="flex-shrink-0 text-xs mt-0.5"
-                  style="color: var(--color-journal-muted);">${dateStr}</span>
+            <div style="flex: 1; min-width: 0;">
+              <h3 class="text-base font-semibold leading-snug"
+                  style="font-family: var(--font-serif); color: var(--color-journal-ink);">
+                ${title}
+              </h3>
+              <span class="text-xs mt-1"
+                    style="color: var(--color-journal-muted);">${dateStr}</span>
+            </div>
+            <div style="flex-shrink: 0; font-size: 1.5rem;">${moodDisplay}</div>
           </div>
           <p class="text-sm leading-relaxed"
              style="color: var(--color-journal-muted); font-family: var(--font-serif);">
@@ -1925,6 +2213,7 @@ service cloud.firestore {
       // NEW ENTRY SCREEN
       // ─────────────────────────────────────────────────────────────────────────
       window.showNewEntryScreen = function () {
+        state.currentMood = null;
         document.getElementById("new-entry-title").value = "";
         document.getElementById("new-entry-body").value = "";
         clearMessage("new-entry-error");
@@ -1935,6 +2224,7 @@ service cloud.firestore {
         document.getElementById("new-entry-body").placeholder =
           `Today's prompt: "${TODAY_PROMPT}"\n\nOr write freely — whatever is on your mind…`;
 
+        createMoodButtons("new-entry-mood-group");
         showScreen("newEntry");
         setTimeout(
           () => document.getElementById("new-entry-title").focus(),
@@ -1962,20 +2252,22 @@ service cloud.firestore {
         setButtonLoading("save-entry-btn", true, "Save Entry");
 
         try {
-          await addDoc(collection(db, "entries"), {
+          const entryData = {
             uid: state.currentUser.uid,
-            title: title,
-            body: body,
+            title: title || null,
+            body,
             createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
             promptUsed: TODAY_PROMPT,
-          });
+          };
 
-          showMessage(
-            "new-entry-success",
-            "Entry saved successfully!",
-            "success",
-          );
+          // Include mood only if one was selected
+          if (state.currentMood) {
+            entryData.mood = state.currentMood;
+          }
+
+          await addDoc(collection(db, "entries"), entryData);
+
+          showMessage("new-entry-success", "Entry saved! 🎉", "success");
           setButtonLoading("save-entry-btn", false, "Save Entry");
 
           setTimeout(async () => {
@@ -2040,6 +2332,7 @@ service cloud.firestore {
         if (!entry) return;
 
         state.previousScreen = "view";
+        state.currentMood = entry.mood || null;
 
         document.getElementById("edit-entry-title").value = entry.title || "";
         document.getElementById("edit-entry-body").value = entry.body || "";
@@ -2071,6 +2364,7 @@ service cloud.firestore {
         clearMessage("edit-entry-success");
         setButtonLoading("update-entry-btn", false, "Update Entry");
 
+        createMoodButtons("edit-entry-mood-group");
         showScreen("editEntry");
         setTimeout(
           () => document.getElementById("edit-entry-title").focus(),
@@ -2105,11 +2399,20 @@ service cloud.firestore {
         try {
           const docRef = doc(db, "entries", state.currentEntryId);
 
-          await updateDoc(docRef, {
-            title: title,
-            body: body,
+          const updateData = {
+            title: title || null,
+            body,
             updatedAt: serverTimestamp(),
-          });
+          };
+
+          // Include mood if one is selected; otherwise null it out
+          if (state.currentMood) {
+            updateData.mood = state.currentMood;
+          } else {
+            updateData.mood = null;
+          }
+
+          await updateDoc(docRef, updateData);
 
           const idx = state.entries.findIndex(
             (e) => e.id === state.currentEntryId,
@@ -2117,18 +2420,12 @@ service cloud.firestore {
           if (idx !== -1) {
             state.entries[idx] = {
               ...state.entries[idx],
-              title,
-              body,
-              updatedAt: Timestamp.now(),
+              ...updateData,
             };
             state.currentEntryData = state.entries[idx];
           }
 
-          showMessage(
-            "edit-entry-success",
-            "Entry updated successfully!",
-            "success",
-          );
+          showMessage("edit-entry-success", "Entry updated! ✓", "success");
           setButtonLoading("update-entry-btn", false, "Update Entry");
 
           setTimeout(() => {
