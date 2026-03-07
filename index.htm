@@ -1,0 +1,2208 @@
+<!--
+================================================================================
+  THE FULL-STACK JOURNAL — A Private Digital Journal Web App
+  Built with Firebase Authentication, Cloud Firestore, and Tailwind CSS v4
+  Single-file, zero-dependency, immediately deployable.
+================================================================================
+-->
+
+<!-- ============================================================
+  FIRESTORE SECURITY RULES
+  ============================================================
+  Copy-paste these rules into:
+  Firebase Console → Firestore Database → Rules tab
+
+  These rules enforce that journal entries are 100% private.
+  Only the authenticated user who owns a document can read or
+  write it. All unauthenticated access is denied at the root.
+  ============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Deny ALL access by default to every collection
+    // unless explicitly permitted below.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Journal entries collection
+    // Each document must contain a `uid` field that matches
+    // the authenticated user's UID.
+    match /entries/{entryId} {
+
+      // READ: Only the owner can read their own entry.
+      // Checks the stored uid on the existing document.
+      allow read: if request.auth != null
+                  && request.auth.uid == resource.data.uid;
+
+      // CREATE: Only allow creation if the new document's uid
+      // field matches the requesting user's UID.
+      // Prevents a user from writing to another user's space.
+      allow create: if request.auth != null
+                    && request.auth.uid == request.resource.data.uid;
+
+      // UPDATE: Must be the owner (existing doc uid) AND
+      // the update cannot change the uid field to someone else.
+      allow update: if request.auth != null
+                    && request.auth.uid == resource.data.uid
+                    && request.auth.uid == request.resource.data.uid;
+
+      // DELETE: Only the owner can delete their own entry.
+      allow delete: if request.auth != null
+                    && request.auth.uid == resource.data.uid;
+    }
+  }
+}
+
+  ============================================================
+  END OF FIRESTORE SECURITY RULES
+  ============================================================ -->
+
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Full-Stack Journal</title>
+    <meta
+      name="description"
+      content="Your private, secure digital journal — powered by Firebase."
+    />
+
+    <!-- Tailwind CSS v4 via Play CDN (official CDN for browser use) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+    <!-- Google Fonts: Lora (serif, for journal body elegance) + Inter (sans-serif, for UI chrome) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Custom base styles injected via Tailwind's CSS layer system -->
+    <style type="text/tailwindcss">
+      /* ─── Design Tokens ─── */
+      @theme {
+        --color-journal-bg: #faf8f5;
+        --color-journal-surface: #ffffff;
+        --color-journal-border: #e8e2d9;
+        --color-journal-muted: #9c9189;
+        --color-journal-ink: #2c2825;
+        --color-journal-amber: #c8762a;
+        --color-journal-amber-lt: #fef3e2;
+        --color-journal-amber-md: #f5c97a;
+        --color-journal-prompt: #fffbf3;
+        --color-journal-danger: #dc2626;
+        --color-journal-danger-lt: #fef2f2;
+        --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+        --font-serif: "Lora", ui-serif, Georgia, serif;
+      }
+
+      /* ─── Global base ─── */
+      body {
+        font-family: var(--font-sans);
+        background-color: var(--color-journal-bg);
+        color: var(--color-journal-ink);
+        min-height: 100vh;
+      }
+
+      /* ─── Screen visibility helper ─── */
+      /* All screens are in the DOM; JS toggles .screen-active */
+      .screen {
+        display: none;
+      }
+      .screen-active {
+        display: block;
+      }
+
+      /* ─── Smooth screen fade transition ─── */
+      .screen-fade {
+        animation: fadeInUp 0.28s ease both;
+      }
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ─── Auth tab indicator ─── */
+      .tab-active {
+        border-bottom: 2px solid var(--color-journal-amber);
+        color: var(--color-journal-amber);
+        font-weight: 600;
+      }
+      .tab-inactive {
+        border-bottom: 2px solid transparent;
+        color: var(--color-journal-muted);
+      }
+
+      /* ─── Journal typography for entry body ─── */
+      .journal-body {
+        font-family: var(--font-serif);
+        font-size: 1.0625rem;
+        line-height: 1.85;
+        color: var(--color-journal-ink);
+      }
+
+      /* ─── Textarea custom ─── */
+      .journal-textarea {
+        font-family: var(--font-serif);
+        font-size: 1rem;
+        line-height: 1.8;
+        resize: vertical;
+        min-height: 320px;
+      }
+
+      /* ─── Card hover lift ─── */
+      .entry-card {
+        transition:
+          transform 0.18s ease,
+          box-shadow 0.18s ease;
+        cursor: pointer;
+      }
+      .entry-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(44, 40, 37, 0.1);
+      }
+
+      /* ─── Inline loading spinner ─── */
+      .spinner {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        vertical-align: middle;
+        margin-right: 6px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ─── Error / Success message banners ─── */
+      .msg-error {
+        background: var(--color-journal-danger-lt);
+        border: 1px solid #fca5a5;
+        color: var(--color-journal-danger);
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 0.875rem;
+        margin-top: 12px;
+      }
+      .msg-success {
+        background: #f0fdf4;
+        border: 1px solid #86efac;
+        color: #15803d;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 0.875rem;
+        margin-top: 12px;
+      }
+      .msg-hidden {
+        display: none;
+      }
+
+      /* ─── Delete confirmation modal ─── */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(44, 40, 37, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        backdrop-filter: blur(2px);
+        animation: fadeInUp 0.18s ease both;
+      }
+      .modal-overlay.modal-hidden {
+        display: none;
+      }
+
+      /* ─── Empty state ─── */
+      .empty-state {
+        text-align: center;
+        padding: 64px 24px;
+        color: var(--color-journal-muted);
+      }
+
+      /* ─── Scrollbar refinement ─── */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #d4cec7;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+
+  <body class="h-full">
+    <!-- ════════════════════════════════════════════════════════════════════
+       SCREEN 1 — AUTH SCREEN
+       Shows login and register tabs with email/password forms.
+       Visible on initial load; hidden once user is authenticated.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <div id="screen-auth" class="screen screen-active screen-fade">
+      <div
+        class="min-h-screen flex flex-col items-center justify-center px-4 py-12"
+      >
+        <!-- Brand header -->
+        <div class="text-center mb-8">
+          <div
+            class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
+            style="
+              background: var(--color-journal-amber-lt);
+              border: 1px solid var(--color-journal-amber-md);
+            "
+          >
+            <!-- Quill icon (SVG inline) -->
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#c8762a"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M20 4C16 4 6 8 4 20" />
+              <path d="M4 20c2-2 4-3 6-3s4 1 6 1c2 0 4-1 4-4" />
+              <path d="M12 17c-2-4-2-8 0-13" />
+            </svg>
+          </div>
+          <h1
+            class="text-3xl font-bold tracking-tight"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-ink);
+            "
+          >
+            Private Digital Journal
+          </h1>
+          <p class="mt-2 text-sm" style="color: var(--color-journal-muted)">
+            Your private space to think, reflect, and grow.
+          </p>
+        </div>
+
+        <!-- Auth card -->
+        <div
+          class="w-full max-w-md rounded-2xl shadow-lg overflow-hidden"
+          style="
+            background: var(--color-journal-surface);
+            border: 1px solid var(--color-journal-border);
+          "
+        >
+          <!-- Tabs -->
+          <div
+            class="flex border-b"
+            style="border-color: var(--color-journal-border)"
+          >
+            <button
+              id="tab-login"
+              class="flex-1 py-4 text-sm font-medium tracking-wide tab-active transition-all duration-200"
+              onclick="switchTab('login')"
+            >
+              Sign In
+            </button>
+            <button
+              id="tab-register"
+              class="flex-1 py-4 text-sm font-medium tracking-wide tab-inactive transition-all duration-200"
+              onclick="switchTab('register')"
+            >
+              Create Account
+            </button>
+          </div>
+
+          <!-- ── Login Form ── -->
+          <div id="form-login" class="p-8">
+            <h2
+              class="text-lg font-semibold mb-6"
+              style="color: var(--color-journal-ink)"
+            >
+              Welcome back
+            </h2>
+
+            <div class="space-y-4">
+              <div>
+                <label
+                  class="block text-xs font-medium mb-1.5 tracking-wide uppercase"
+                  style="color: var(--color-journal-muted)"
+                  for="login-email"
+                >
+                  Email Address
+                </label>
+                <input
+                  id="login-email"
+                  type="email"
+                  autocomplete="email"
+                  placeholder="you@example.com"
+                  class="w-full px-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none"
+                  style="
+                    border: 1.5px solid var(--color-journal-border);
+                    background: var(--color-journal-bg);
+                    font-family: var(--font-sans);
+                    color: var(--color-journal-ink);
+                  "
+                  onfocus="
+                    this.style.borderColor = 'var(--color-journal-amber)'
+                  "
+                  onblur="
+                    this.style.borderColor = 'var(--color-journal-border)'
+                  "
+                />
+              </div>
+              <div>
+                <label
+                  class="block text-xs font-medium mb-1.5 tracking-wide uppercase"
+                  style="color: var(--color-journal-muted)"
+                  for="login-password"
+                >
+                  Password
+                </label>
+                <input
+                  id="login-password"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder="••••••••"
+                  class="w-full px-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none"
+                  style="
+                    border: 1.5px solid var(--color-journal-border);
+                    background: var(--color-journal-bg);
+                    font-family: var(--font-sans);
+                    color: var(--color-journal-ink);
+                  "
+                  onfocus="
+                    this.style.borderColor = 'var(--color-journal-amber)'
+                  "
+                  onblur="
+                    this.style.borderColor = 'var(--color-journal-border)'
+                  "
+                />
+              </div>
+            </div>
+
+            <!-- Login error message (hidden by default) -->
+            <div id="login-error" class="msg-error msg-hidden"></div>
+            <div id="login-success" class="msg-success msg-hidden"></div>
+
+            <button
+              id="login-btn"
+              onclick="handleLogin()"
+              class="mt-6 w-full py-3 rounded-xl text-sm font-semibold text-white tracking-wide transition-all duration-200"
+              style="background: var(--color-journal-amber)"
+            >
+              Sign In
+            </button>
+          </div>
+
+          <!-- ── Register Form ── -->
+          <div id="form-register" class="p-8 hidden">
+            <h2
+              class="text-lg font-semibold mb-6"
+              style="color: var(--color-journal-ink)"
+            >
+              Start your journal
+            </h2>
+
+            <div class="space-y-4">
+              <div>
+                <label
+                  class="block text-xs font-medium mb-1.5 tracking-wide uppercase"
+                  style="color: var(--color-journal-muted)"
+                  for="register-email"
+                >
+                  Email Address
+                </label>
+                <input
+                  id="register-email"
+                  type="email"
+                  autocomplete="email"
+                  placeholder="you@example.com"
+                  class="w-full px-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none"
+                  style="
+                    border: 1.5px solid var(--color-journal-border);
+                    background: var(--color-journal-bg);
+                    font-family: var(--font-sans);
+                    color: var(--color-journal-ink);
+                  "
+                  onfocus="
+                    this.style.borderColor = 'var(--color-journal-amber)'
+                  "
+                  onblur="
+                    this.style.borderColor = 'var(--color-journal-border)'
+                  "
+                />
+              </div>
+              <div>
+                <label
+                  class="block text-xs font-medium mb-1.5 tracking-wide uppercase"
+                  style="color: var(--color-journal-muted)"
+                  for="register-password"
+                >
+                  Password
+                  <span style="color: var(--color-journal-muted)"
+                    >(min. 6 characters)</span
+                  >
+                </label>
+                <input
+                  id="register-password"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="••••••••"
+                  class="w-full px-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none"
+                  style="
+                    border: 1.5px solid var(--color-journal-border);
+                    background: var(--color-journal-bg);
+                    font-family: var(--font-sans);
+                    color: var(--color-journal-ink);
+                  "
+                  onfocus="
+                    this.style.borderColor = 'var(--color-journal-amber)'
+                  "
+                  onblur="
+                    this.style.borderColor = 'var(--color-journal-border)'
+                  "
+                />
+              </div>
+              <div>
+                <label
+                  class="block text-xs font-medium mb-1.5 tracking-wide uppercase"
+                  style="color: var(--color-journal-muted)"
+                  for="register-confirm"
+                >
+                  Confirm Password
+                </label>
+                <input
+                  id="register-confirm"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="••••••••"
+                  class="w-full px-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none"
+                  style="
+                    border: 1.5px solid var(--color-journal-border);
+                    background: var(--color-journal-bg);
+                    font-family: var(--font-sans);
+                    color: var(--color-journal-ink);
+                  "
+                  onfocus="
+                    this.style.borderColor = 'var(--color-journal-amber)'
+                  "
+                  onblur="
+                    this.style.borderColor = 'var(--color-journal-border)'
+                  "
+                />
+              </div>
+            </div>
+
+            <!-- Register error/success messages -->
+            <div id="register-error" class="msg-error msg-hidden"></div>
+            <div id="register-success" class="msg-success msg-hidden"></div>
+
+            <button
+              id="register-btn"
+              onclick="handleRegister()"
+              class="mt-6 w-full py-3 rounded-xl text-sm font-semibold text-white tracking-wide transition-all duration-200"
+              style="background: var(--color-journal-amber)"
+            >
+              Create Account
+            </button>
+          </div>
+        </div>
+
+        <!-- Footer tagline -->
+        <p
+          class="mt-8 text-xs text-center"
+          style="color: var(--color-journal-muted)"
+        >
+          Your entries are encrypted in transit and private by default.<br />
+          Only you can access your journal.
+        </p>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+       SCREEN 2 — DASHBOARD / JOURNAL LIST
+       Shows daily prompt card + list of user's entries (newest first).
+       Visible after successful authentication.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <div id="screen-dashboard" class="screen screen-fade">
+      <!-- Top navigation bar -->
+      <header
+        class="sticky top-0 z-50 border-b"
+        style="
+          background: rgba(250, 248, 245, 0.92);
+          backdrop-filter: blur(12px);
+          border-color: var(--color-journal-border);
+        "
+      >
+        <div
+          class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between"
+        >
+          <div class="flex items-center gap-2.5">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#c8762a"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M20 4C16 4 6 8 4 20" />
+              <path d="M4 20c2-2 4-3 6-3s4 1 6 1c2 0 4-1 4-4" />
+              <path d="M12 17c-2-4-2-8 0-13" />
+            </svg>
+            <span
+              class="font-semibold text-base tracking-tight"
+              style="
+                font-family: var(--font-serif);
+                color: var(--color-journal-ink);
+              "
+            >
+              Private Digital Journal
+            </span>
+          </div>
+          <div class="flex items-center gap-3">
+            <!-- User email display -->
+            <span
+              id="header-email"
+              class="text-xs hidden sm:block"
+              style="color: var(--color-journal-muted)"
+            ></span>
+            <!-- Sign out button -->
+            <button
+              onclick="handleSignOut()"
+              class="text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200"
+              style="
+                border: 1px solid var(--color-journal-border);
+                color: var(--color-journal-muted);
+              "
+              onmouseover="
+                this.style.borderColor = 'var(--color-journal-amber)';
+                this.style.color = 'var(--color-journal-amber)';
+              "
+              onmouseout="
+                this.style.borderColor = 'var(--color-journal-border)';
+                this.style.color = 'var(--color-journal-muted)';
+              "
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main content -->
+      <main class="max-w-2xl mx-auto px-4 py-8">
+        <!-- ── Daily Reflection Prompt Card ── -->
+        <div
+          class="rounded-2xl p-6 mb-8 relative overflow-hidden"
+          style="
+            background: var(--color-journal-prompt);
+            border: 1px solid var(--color-journal-amber-md);
+          "
+        >
+          <!-- Decorative corner accent -->
+          <div
+            class="absolute top-0 right-0 w-24 h-24 opacity-5"
+            style="
+              background: radial-gradient(
+                circle at top right,
+                var(--color-journal-amber),
+                transparent
+              );
+            "
+          ></div>
+          <div class="flex items-start gap-3">
+            <div class="flex-shrink-0 mt-0.5">
+              <div
+                class="w-7 h-7 rounded-full flex items-center justify-center"
+                style="background: var(--color-journal-amber-md)"
+              >
+                <!-- Sun/star icon -->
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#a0621a"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <circle cx="12" cy="12" r="5" />
+                  <line x1="12" y1="1" x2="12" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="23" />
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                  <line x1="1" y1="12" x2="3" y2="12" />
+                  <line x1="21" y1="12" x2="23" y2="12" />
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+              </div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p
+                class="text-xs font-semibold tracking-widest uppercase mb-2"
+                style="color: var(--color-journal-amber)"
+              >
+                Today's Reflection Prompt
+              </p>
+              <p
+                id="dashboard-prompt-text"
+                class="text-base leading-relaxed"
+                style="
+                  font-family: var(--font-serif);
+                  color: var(--color-journal-ink);
+                  font-style: italic;
+                "
+              >
+                <!-- Populated by JavaScript -->
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Section header + New Entry button ── -->
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h2
+              class="text-xl font-bold"
+              style="
+                font-family: var(--font-serif);
+                color: var(--color-journal-ink);
+              "
+            >
+              My Entries
+            </h2>
+            <p
+              id="entry-count-label"
+              class="text-xs mt-0.5"
+              style="color: var(--color-journal-muted)"
+            ></p>
+          </div>
+          <button
+            onclick="showNewEntryScreen()"
+            class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+            style="background: var(--color-journal-amber)"
+            onmouseover="this.style.opacity = '0.9'"
+            onmouseout="this.style.opacity = '1'"
+          >
+            <!-- Plus icon -->
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Entry
+          </button>
+        </div>
+
+        <!-- ── Dashboard loading state ── -->
+        <div
+          id="dashboard-loading"
+          class="flex items-center justify-center py-16"
+        >
+          <div
+            class="flex flex-col items-center gap-3"
+            style="color: var(--color-journal-muted)"
+          >
+            <div
+              style="
+                width: 28px;
+                height: 28px;
+                border: 2px solid var(--color-journal-border);
+                border-top-color: var(--color-journal-amber);
+                border-radius: 50%;
+                animation: spin 0.7s linear infinite;
+              "
+            ></div>
+            <span class="text-sm">Loading your journal…</span>
+          </div>
+        </div>
+
+        <!-- ── Dashboard error display ── -->
+        <div id="dashboard-error" class="msg-error msg-hidden"></div>
+
+        <!-- ── Entries list container ── -->
+        <div id="entries-list" class="space-y-3 hidden">
+          <!-- Entry cards are dynamically injected by JavaScript -->
+        </div>
+
+        <!-- ── Empty state (shown when user has no entries) ── -->
+        <div id="empty-state" class="empty-state hidden">
+          <div
+            class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+            style="
+              background: var(--color-journal-amber-lt);
+              border: 1px solid var(--color-journal-amber-md);
+            "
+          >
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#c8762a"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            >
+              <path d="M20 4C16 4 6 8 4 20" />
+              <path d="M4 20c2-2 4-3 6-3s4 1 6 1c2 0 4-1 4-4" />
+              <path d="M12 17c-2-4-2-8 0-13" />
+            </svg>
+          </div>
+          <h3
+            class="text-base font-semibold mb-2"
+            style="color: var(--color-journal-ink)"
+          >
+            Your journal is empty
+          </h3>
+          <p
+            class="text-sm leading-relaxed max-w-xs mx-auto"
+            style="color: var(--color-journal-muted)"
+          >
+            Begin with today's reflection prompt, or just write whatever is on
+            your mind.
+          </p>
+          <button
+            onclick="showNewEntryScreen()"
+            class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+            style="background: var(--color-journal-amber)"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Write your first entry
+          </button>
+        </div>
+      </main>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+       SCREEN 3 — NEW ENTRY SCREEN
+       Full writing view with title + body textarea.
+       The daily prompt pre-fills the placeholder for writing inspiration.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <div id="screen-new-entry" class="screen screen-fade">
+      <!-- Navigation bar -->
+      <header
+        class="sticky top-0 z-50 border-b"
+        style="
+          background: rgba(250, 248, 245, 0.92);
+          backdrop-filter: blur(12px);
+          border-color: var(--color-journal-border);
+        "
+      >
+        <div
+          class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between"
+        >
+          <button
+            onclick="showDashboard()"
+            class="flex items-center gap-2 text-sm font-medium transition-colors duration-200"
+            style="color: var(--color-journal-muted)"
+            onmouseover="this.style.color = 'var(--color-journal-ink)'"
+            onmouseout="this.style.color = 'var(--color-journal-muted)'"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Back
+          </button>
+          <span
+            class="text-sm font-semibold"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-ink);
+            "
+          >
+            New Entry
+          </span>
+          <div class="w-12"></div>
+          <!-- spacer for centering -->
+        </div>
+      </header>
+
+      <main class="max-w-2xl mx-auto px-4 py-8">
+        <!-- Prompt reminder pill -->
+        <div
+          id="new-entry-prompt-pill"
+          class="flex items-start gap-2.5 rounded-xl p-4 mb-6"
+          style="
+            background: var(--color-journal-prompt);
+            border: 1px solid var(--color-journal-amber-md);
+          "
+        >
+          <svg
+            class="flex-shrink-0 mt-0.5"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#c8762a"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </svg>
+          <p
+            id="new-entry-prompt-text"
+            class="text-sm leading-relaxed"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-amber);
+              font-style: italic;
+            "
+          >
+            <!-- Populated by JS -->
+          </p>
+        </div>
+
+        <!-- Title input -->
+        <div class="mb-4">
+          <input
+            id="new-entry-title"
+            type="text"
+            placeholder="Entry title (optional)"
+            maxlength="200"
+            class="w-full px-0 py-2 text-2xl font-bold bg-transparent border-none outline-none"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-ink);
+              border-bottom: 1.5px solid var(--color-journal-border);
+            "
+            onfocus="
+              this.style.borderBottomColor = 'var(--color-journal-amber)'
+            "
+            onblur="
+              this.style.borderBottomColor = 'var(--color-journal-border)'
+            "
+          />
+        </div>
+
+        <!-- Date display -->
+        <p
+          id="new-entry-date"
+          class="text-xs mb-5"
+          style="color: var(--color-journal-muted)"
+        ></p>
+
+        <!-- Body textarea -->
+        <textarea
+          id="new-entry-body"
+          class="journal-textarea w-full px-0 bg-transparent border-none outline-none"
+          style="color: var(--color-journal-ink)"
+          placeholder="Start writing here — let your thoughts flow freely…"
+        >
+        </textarea>
+
+        <!-- Error/success messages -->
+        <div id="new-entry-error" class="msg-error msg-hidden"></div>
+        <div id="new-entry-success" class="msg-success msg-hidden"></div>
+
+        <!-- Action buttons -->
+        <div
+          class="flex items-center gap-3 mt-6 pt-6"
+          style="border-top: 1px solid var(--color-journal-border)"
+        >
+          <button
+            id="save-entry-btn"
+            onclick="handleSaveEntry()"
+            class="flex-1 py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+            style="background: var(--color-journal-amber)"
+          >
+            Save Entry
+          </button>
+          <button
+            onclick="showDashboard()"
+            class="px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200"
+            style="
+              border: 1.5px solid var(--color-journal-border);
+              color: var(--color-journal-muted);
+            "
+            onmouseover="this.style.borderColor = 'var(--color-journal-amber)'"
+            onmouseout="this.style.borderColor = 'var(--color-journal-border)'"
+          >
+            Cancel
+          </button>
+        </div>
+      </main>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+       SCREEN 4 — EDIT ENTRY SCREEN
+       Identical layout to New Entry but pre-populated with existing data.
+       Has Update and Delete buttons.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <div id="screen-edit-entry" class="screen screen-fade">
+      <!-- Navigation bar -->
+      <header
+        class="sticky top-0 z-50 border-b"
+        style="
+          background: rgba(250, 248, 245, 0.92);
+          backdrop-filter: blur(12px);
+          border-color: var(--color-journal-border);
+        "
+      >
+        <div
+          class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between"
+        >
+          <button
+            onclick="goBackFromEdit()"
+            class="flex items-center gap-2 text-sm font-medium transition-colors duration-200"
+            style="color: var(--color-journal-muted)"
+            onmouseover="this.style.color = 'var(--color-journal-ink)'"
+            onmouseout="this.style.color = 'var(--color-journal-muted)'"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Back
+          </button>
+          <span
+            class="text-sm font-semibold"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-ink);
+            "
+          >
+            Edit Entry
+          </span>
+          <!-- Delete trigger button -->
+          <button
+            onclick="showDeleteModal()"
+            class="flex items-center gap-1.5 text-sm font-medium transition-colors duration-200 px-3 py-1.5 rounded-lg"
+            style="color: var(--color-journal-danger)"
+            onmouseover="
+              this.style.background = 'var(--color-journal-danger-lt)'
+            "
+            onmouseout="this.style.background = 'transparent'"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      </header>
+
+      <main class="max-w-2xl mx-auto px-4 py-8">
+        <!-- Original prompt that inspired this entry (shown for context) -->
+        <div
+          id="edit-original-prompt"
+          class="flex items-start gap-2.5 rounded-xl p-4 mb-6 hidden"
+          style="
+            background: var(--color-journal-prompt);
+            border: 1px solid var(--color-journal-amber-md);
+          "
+        >
+          <svg
+            class="flex-shrink-0 mt-0.5"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#c8762a"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <circle cx="12" cy="12" r="5" />
+          </svg>
+          <div>
+            <p
+              class="text-xs font-semibold tracking-wide uppercase mb-1"
+              style="color: var(--color-journal-amber)"
+            >
+              Original Prompt
+            </p>
+            <p
+              id="edit-prompt-text"
+              class="text-sm leading-relaxed"
+              style="
+                font-family: var(--font-serif);
+                color: var(--color-journal-amber);
+                font-style: italic;
+              "
+            ></p>
+          </div>
+        </div>
+
+        <!-- Title input -->
+        <div class="mb-4">
+          <input
+            id="edit-entry-title"
+            type="text"
+            placeholder="Entry title (optional)"
+            maxlength="200"
+            class="w-full px-0 py-2 text-2xl font-bold bg-transparent border-none outline-none"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-ink);
+              border-bottom: 1.5px solid var(--color-journal-border);
+            "
+            onfocus="
+              this.style.borderBottomColor = 'var(--color-journal-amber)'
+            "
+            onblur="
+              this.style.borderBottomColor = 'var(--color-journal-border)'
+            "
+          />
+        </div>
+
+        <!-- Timestamps display -->
+        <p
+          id="edit-entry-dates"
+          class="text-xs mb-5"
+          style="color: var(--color-journal-muted)"
+        ></p>
+
+        <!-- Body textarea -->
+        <textarea
+          id="edit-entry-body"
+          class="journal-textarea w-full px-0 bg-transparent border-none outline-none"
+          style="color: var(--color-journal-ink)"
+          placeholder="Start writing here…"
+        >
+        </textarea>
+
+        <!-- Error/success messages -->
+        <div id="edit-entry-error" class="msg-error msg-hidden"></div>
+        <div id="edit-entry-success" class="msg-success msg-hidden"></div>
+
+        <!-- Action buttons -->
+        <div
+          class="flex items-center gap-3 mt-6 pt-6"
+          style="border-top: 1px solid var(--color-journal-border)"
+        >
+          <button
+            id="update-entry-btn"
+            onclick="handleUpdateEntry()"
+            class="flex-1 py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+            style="background: var(--color-journal-amber)"
+          >
+            Update Entry
+          </button>
+          <button
+            onclick="goBackFromEdit()"
+            class="px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200"
+            style="
+              border: 1.5px solid var(--color-journal-border);
+              color: var(--color-journal-muted);
+            "
+            onmouseover="this.style.borderColor = 'var(--color-journal-amber)'"
+            onmouseout="this.style.borderColor = 'var(--color-journal-border)'"
+          >
+            Cancel
+          </button>
+        </div>
+      </main>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+       SCREEN 5 — SINGLE ENTRY VIEW SCREEN
+       Read-only view of one complete journal entry.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <div id="screen-view-entry" class="screen screen-fade">
+      <!-- Navigation bar -->
+      <header
+        class="sticky top-0 z-50 border-b"
+        style="
+          background: rgba(250, 248, 245, 0.92);
+          backdrop-filter: blur(12px);
+          border-color: var(--color-journal-border);
+        "
+      >
+        <div
+          class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between"
+        >
+          <button
+            onclick="showDashboard()"
+            class="flex items-center gap-2 text-sm font-medium transition-colors duration-200"
+            style="color: var(--color-journal-muted)"
+            onmouseover="this.style.color = 'var(--color-journal-ink)'"
+            onmouseout="this.style.color = 'var(--color-journal-muted)'"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Back
+          </button>
+          <span
+            class="text-sm font-semibold"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-ink);
+            "
+          >
+            Journal Entry
+          </span>
+          <!-- Edit button -->
+          <button
+            onclick="showEditScreen()"
+            class="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg transition-all duration-200"
+            style="
+              color: var(--color-journal-amber);
+              border: 1px solid var(--color-journal-amber-md);
+            "
+            onmouseover="
+              this.style.background = 'var(--color-journal-amber-lt)'
+            "
+            onmouseout="this.style.background = 'transparent'"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            Edit
+          </button>
+        </div>
+      </header>
+
+      <main class="max-w-2xl mx-auto px-4 py-8">
+        <!-- Timestamps -->
+        <div class="mb-2">
+          <p
+            id="view-entry-dates"
+            class="text-xs"
+            style="color: var(--color-journal-muted)"
+          ></p>
+        </div>
+
+        <!-- Title -->
+        <h1
+          id="view-entry-title"
+          class="text-3xl font-bold mb-6 leading-snug"
+          style="
+            font-family: var(--font-serif);
+            color: var(--color-journal-ink);
+          "
+        ></h1>
+
+        <!-- Body -->
+        <div
+          id="view-entry-body"
+          class="journal-body whitespace-pre-wrap"
+        ></div>
+
+        <!-- Original prompt (if available) -->
+        <div
+          id="view-entry-prompt-block"
+          class="mt-10 rounded-xl p-4 hidden"
+          style="
+            background: var(--color-journal-prompt);
+            border: 1px solid var(--color-journal-amber-md);
+          "
+        >
+          <p
+            class="text-xs font-semibold tracking-widest uppercase mb-1.5"
+            style="color: var(--color-journal-amber)"
+          >
+            Written in response to
+          </p>
+          <p
+            id="view-entry-prompt-text"
+            class="text-sm leading-relaxed"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-ink);
+              font-style: italic;
+            "
+          ></p>
+        </div>
+      </main>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+       DELETE CONFIRMATION MODAL
+       Rendered on top of the Edit screen. Requires explicit confirmation
+       before irreversible Firestore delete is executed.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <div
+      id="delete-modal"
+      class="modal-overlay modal-hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-modal-title"
+    >
+      <div
+        class="w-full max-w-sm mx-4 rounded-2xl p-6 shadow-2xl"
+        style="
+          background: var(--color-journal-surface);
+          border: 1px solid var(--color-journal-border);
+        "
+      >
+        <!-- Icon -->
+        <div
+          class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4"
+          style="background: var(--color-journal-danger-lt)"
+        >
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#dc2626"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4h6v2" />
+          </svg>
+        </div>
+        <h3
+          id="delete-modal-title"
+          class="text-center text-base font-semibold mb-2"
+          style="color: var(--color-journal-ink)"
+        >
+          Delete this entry?
+        </h3>
+        <p
+          class="text-center text-sm mb-6 leading-relaxed"
+          style="color: var(--color-journal-muted)"
+        >
+          This action is permanent and cannot be undone. Your entry will be
+          removed from your journal forever.
+        </p>
+        <!-- Modal error message -->
+        <div id="delete-modal-error" class="msg-error msg-hidden mb-4"></div>
+        <div class="flex gap-3">
+          <button
+            onclick="hideDeleteModal()"
+            class="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+            style="
+              border: 1.5px solid var(--color-journal-border);
+              color: var(--color-journal-muted);
+            "
+            onmouseover="this.style.borderColor = 'var(--color-journal-ink)'"
+            onmouseout="this.style.borderColor = 'var(--color-journal-border)'"
+          >
+            Keep Entry
+          </button>
+          <button
+            id="confirm-delete-btn"
+            onclick="handleDeleteEntry()"
+            class="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+            style="background: var(--color-journal-danger)"
+          >
+            Yes, Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+       APP INITIALIZATION OVERLAY
+       Shown while Firebase Auth state is being determined on page load.
+       Prevents flash of wrong screen.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <div
+      id="app-init-overlay"
+      class="fixed inset-0 flex items-center justify-center z-[200]"
+      style="background: var(--color-journal-bg)"
+    >
+      <div class="flex flex-col items-center gap-4">
+        <div
+          style="
+            width: 36px;
+            height: 36px;
+            border: 2.5px solid var(--color-journal-border);
+            border-top-color: var(--color-journal-amber);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+          "
+        ></div>
+        <p
+          class="text-sm"
+          style="
+            color: var(--color-journal-muted);
+            font-family: var(--font-serif);
+          "
+        >
+          Opening your journal…
+        </p>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+       JAVASCRIPT — ALL APP LOGIC
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <script type="module">
+      // ─────────────────────────────────────────────────────────────────────────
+      // FIREBASE SDK IMPORTS
+      // Using the modular v11 SDK via Google CDN (ESM builds).
+      // Each service is tree-shaken via explicit named imports.
+      // ─────────────────────────────────────────────────────────────────────────
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+
+      // ✅ FIX: replaced `getAuth` with `initializeAuth` so the explicit
+      // initializeAuth(app, { persistence: browserLocalPersistence }) call
+      // below resolves correctly. `setPersistence` is also kept for safety
+      // but is now redundant since persistence is passed at init time.
+      import {
+        initializeAuth,
+        createUserWithEmailAndPassword,
+        signInWithEmailAndPassword,
+        signOut,
+        onAuthStateChanged,
+        browserLocalPersistence,
+        setPersistence,
+      } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+
+      import {
+        getFirestore,
+        collection,
+        doc,
+        addDoc,
+        updateDoc,
+        deleteDoc,
+        getDocs,
+        query,
+        where,
+        orderBy,
+        serverTimestamp,
+        Timestamp,
+      } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // 🔧 REPLACE WITH YOUR FIREBASE CONFIG
+      // Found in: Firebase Console → Project Settings → Your Apps → SDK setup
+      // ─────────────────────────────────────────────────────────────────────────
+      // ✅ REPLACE WITH THIS ENTIRE BLOCK:
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyDM-ToXSImBPFnxukbrsn5d9hAMnaPvIqI",
+        authDomain: "my-journal-v2.firebaseapp.com",
+        projectId: "my-journal-v2",
+        storageBucket: "my-journal-v2.firebasestorage.app",
+        messagingSenderId: "243121137113",
+        appId: "1:243121137113:web:3a83e2ef5350e02b55e5c8",
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // DETECT DEPLOYMENT PLATFORM & SET CORRECT authDomain
+      // This ensures Firebase Auth works correctly regardless of where
+      // the app is hosted — local, Firebase Hosting, Netlify, Vercel,
+      // GitHub Pages, or a custom domain.
+      // ─────────────────────────────────────────────────────────────────────────
+      const currentDomain = window.location.hostname;
+
+      const isFirebaseHosting =
+        currentDomain.endsWith(".web.app") ||
+        currentDomain.endsWith(".firebaseapp.com");
+
+      const isLocalDev =
+        currentDomain === "localhost" || currentDomain === "127.0.0.1";
+
+      // For non-Firebase-Hosting deployments (Netlify, Vercel, GitHub Pages,
+      // custom domain), override authDomain with the current domain so that
+      // Firebase Auth cookies and redirects work correctly.
+      if (!isFirebaseHosting && !isLocalDev) {
+        firebaseConfig.authDomain = currentDomain;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // FIREBASE INITIALIZATION
+      // initializeAuth replaces getAuth here so we can pass persistence
+      // directly at construction time, bypassing the reCAPTCHA flow that
+      // newer SDK versions trigger automatically when using getAuth().
+      // ─────────────────────────────────────────────────────────────────────────
+      const app = initializeApp(firebaseConfig);
+      const auth = initializeAuth(app, {
+        persistence: browserLocalPersistence,
+      });
+      const db = getFirestore(app);
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // DAILY REFLECTION PROMPTS
+      // ─────────────────────────────────────────────────────────────────────────
+      const REFLECTION_PROMPTS = [
+        "What moment from today are you most grateful for, and why did it matter to you?",
+        "Describe a recent challenge you faced. What did it teach you about yourself?",
+        "What emotion have you been carrying most this week? Where do you feel it in your body?",
+        "If your future self could send you one message right now, what do you think it would say?",
+        "What is one belief about yourself that you're beginning to question or outgrow?",
+        "Who in your life makes you feel most seen and understood? What do they do that helps you feel that way?",
+        "Describe a version of 'a good day' for you — not perfect, but genuinely good.",
+        "What are you avoiding thinking about? Why might it be worth exploring?",
+        "Write about a small, ordinary moment that brought you unexpected joy recently.",
+        "What would you do differently if you knew no one would judge you for it?",
+        "What does 'rest' actually feel like for you, and are you getting enough of it?",
+        "Describe someone who changed the course of your life — in what way, and do they know it?",
+        "What does your inner critic say to you most often? What would a kinder voice say instead?",
+        "What have you been meaning to forgive yourself for? What would that forgiveness look like?",
+        "List three things you know now that you wish you'd known five years ago.",
+        "What part of your daily routine nourishes you, and what part drains you?",
+        "If you could spend one week doing only what felt truly meaningful, what would that look like?",
+        "What relationship in your life needs more attention, and what one step could you take today?",
+        "Write about a fear that has quietly shaped the choices you've made.",
+        "What is something you've been proud of recently that you haven't told anyone?",
+        "How have your values changed in the last few years? What shifted them?",
+        "What does 'home' mean to you right now — is it a place, a feeling, or something else?",
+        "Describe a time you surprised yourself. What did that reveal about who you are?",
+        "What conversation have you been putting off? What's really stopping you from having it?",
+        "If you removed all external expectations, what would you most want your life to look like?",
+      ];
+
+      function getDayOfYear() {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), 0, 0);
+        const diff = now - start;
+        const oneDay = 1000 * 60 * 60 * 24;
+        return Math.floor(diff / oneDay);
+      }
+
+      const TODAY_PROMPT =
+        REFLECTION_PROMPTS[getDayOfYear() % REFLECTION_PROMPTS.length];
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // APPLICATION STATE
+      // ─────────────────────────────────────────────────────────────────────────
+      const state = {
+        currentUser: null,
+        entries: [],
+        currentEntryId: null,
+        currentEntryData: null,
+        previousScreen: null,
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // SCREEN MANAGEMENT
+      // ─────────────────────────────────────────────────────────────────────────
+      const SCREENS = {
+        auth: document.getElementById("screen-auth"),
+        dashboard: document.getElementById("screen-dashboard"),
+        newEntry: document.getElementById("screen-new-entry"),
+        editEntry: document.getElementById("screen-edit-entry"),
+        viewEntry: document.getElementById("screen-view-entry"),
+      };
+
+      function showScreen(name) {
+        Object.entries(SCREENS).forEach(([key, el]) => {
+          el.classList.remove("screen-active", "screen-fade");
+          if (key === name) {
+            el.classList.add("screen-active");
+            void el.offsetWidth;
+            el.classList.add("screen-fade");
+          }
+        });
+        window.scrollTo({ top: 0, behavior: "instant" });
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // AUTH TAB SWITCHER
+      // ─────────────────────────────────────────────────────────────────────────
+      window.switchTab = function (tab) {
+        const loginForm = document.getElementById("form-login");
+        const registerForm = document.getElementById("form-register");
+        const tabLogin = document.getElementById("tab-login");
+        const tabRegister = document.getElementById("tab-register");
+
+        clearMessage("login-error");
+        clearMessage("login-success");
+        clearMessage("register-error");
+        clearMessage("register-success");
+
+        if (tab === "login") {
+          loginForm.classList.remove("hidden");
+          registerForm.classList.add("hidden");
+          tabLogin.className =
+            "flex-1 py-4 text-sm font-medium tracking-wide tab-active transition-all duration-200";
+          tabRegister.className =
+            "flex-1 py-4 text-sm font-medium tracking-wide tab-inactive transition-all duration-200";
+        } else {
+          loginForm.classList.add("hidden");
+          registerForm.classList.remove("hidden");
+          tabLogin.className =
+            "flex-1 py-4 text-sm font-medium tracking-wide tab-inactive transition-all duration-200";
+          tabRegister.className =
+            "flex-1 py-4 text-sm font-medium tracking-wide tab-active transition-all duration-200";
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // INLINE MESSAGE HELPERS
+      // ─────────────────────────────────────────────────────────────────────────
+      function showMessage(id, text, type = "error") {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = text;
+        el.className = type === "success" ? "msg-success" : "msg-error";
+      }
+
+      function clearMessage(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.add("msg-hidden");
+      }
+
+      function setButtonLoading(id, loading, label) {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = loading;
+        btn.style.opacity = loading ? "0.75" : "1";
+        btn.innerHTML = loading
+          ? `<span class="spinner"></span> Saving…`
+          : label;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // FIREBASE AUTH ERROR MESSAGES
+      // ─────────────────────────────────────────────────────────────────────────
+      function getFriendlyAuthError(code) {
+        const messages = {
+          "auth/user-not-found": "No account found with this email address.",
+          "auth/wrong-password": "Incorrect password. Please try again.",
+          "auth/invalid-email": "Please enter a valid email address.",
+          "auth/email-already-in-use":
+            "An account already exists with this email.",
+          "auth/weak-password": "Password must be at least 6 characters.",
+          "auth/too-many-requests":
+            "Too many attempts. Please wait a moment and try again.",
+          "auth/network-request-failed":
+            "Network error. Check your connection and try again.",
+          "auth/invalid-credential":
+            "Email or password is incorrect. Please try again.",
+          "auth/user-disabled": "This account has been disabled.",
+        };
+        return (
+          messages[code] || "An unexpected error occurred. Please try again."
+        );
+      }
+
+      function getFriendlyFirestoreError(code) {
+        const messages = {
+          "permission-denied":
+            "Access denied. You do not have permission to perform this action.",
+          unavailable:
+            "Service temporarily unavailable. Check your connection.",
+          "not-found":
+            "This entry could not be found. It may have been deleted.",
+          cancelled: "The operation was cancelled.",
+          "deadline-exceeded": "Request timed out. Please try again.",
+        };
+        return messages[code] || "A database error occurred. Please try again.";
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // DATE FORMATTING HELPERS
+      // ─────────────────────────────────────────────────────────────────────────
+      function formatDate(ts, includeTime = false) {
+        if (!ts) return "Unknown date";
+        const d = ts instanceof Timestamp ? ts.toDate() : new Date(ts);
+        const opts = { month: "long", day: "numeric", year: "numeric" };
+        if (includeTime) {
+          opts.hour = "numeric";
+          opts.minute = "2-digit";
+        }
+        return d.toLocaleDateString("en-US", opts);
+      }
+
+      function formatDateShort(ts) {
+        if (!ts) return "";
+        const d = ts instanceof Timestamp ? ts.toDate() : new Date(ts);
+        return d.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      }
+
+      function getTodayLong() {
+        return new Date().toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        });
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // AUTHENTICATION HANDLERS
+      // ─────────────────────────────────────────────────────────────────────────
+      window.handleLogin = async function () {
+        const email = document.getElementById("login-email").value.trim();
+        const password = document.getElementById("login-password").value;
+
+        clearMessage("login-error");
+        clearMessage("login-success");
+
+        if (!email)
+          return showMessage("login-error", "Please enter your email address.");
+        if (!password)
+          return showMessage("login-error", "Please enter your password.");
+
+        setButtonLoading("login-btn", true, "Sign In");
+
+        try {
+          await signInWithEmailAndPassword(auth, email, password);
+        } catch (err) {
+          showMessage("login-error", getFriendlyAuthError(err.code));
+          setButtonLoading("login-btn", false, "Sign In");
+        }
+      };
+
+      window.handleRegister = async function () {
+        const email = document.getElementById("register-email").value.trim();
+        const password = document.getElementById("register-password").value;
+        const confirm = document.getElementById("register-confirm").value;
+
+        clearMessage("register-error");
+        clearMessage("register-success");
+
+        if (!email)
+          return showMessage(
+            "register-error",
+            "Please enter your email address.",
+          );
+        if (!password)
+          return showMessage("register-error", "Please enter a password.");
+        if (password.length < 6)
+          return showMessage(
+            "register-error",
+            "Password must be at least 6 characters.",
+          );
+        if (password !== confirm)
+          return showMessage("register-error", "Passwords do not match.");
+
+        setButtonLoading("register-btn", true, "Create Account");
+
+        try {
+          await createUserWithEmailAndPassword(auth, email, password);
+        } catch (err) {
+          showMessage("register-error", getFriendlyAuthError(err.code));
+          setButtonLoading("register-btn", false, "Create Account");
+        }
+      };
+
+      window.handleSignOut = async function () {
+        try {
+          await signOut(auth);
+        } catch (err) {
+          showMessage("dashboard-error", "Sign out failed. Please try again.");
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // AUTH STATE OBSERVER
+      // ─────────────────────────────────────────────────────────────────────────
+      onAuthStateChanged(auth, async (user) => {
+        document.getElementById("app-init-overlay").style.display = "none";
+
+        if (user) {
+          state.currentUser = user;
+          document.getElementById("header-email").textContent = user.email;
+          await loadAndShowDashboard();
+        } else {
+          state.currentUser = null;
+          state.entries = [];
+          state.currentEntryId = null;
+          state.currentEntryData = null;
+
+          document.getElementById("login-email").value = "";
+          document.getElementById("login-password").value = "";
+          document.getElementById("register-email").value = "";
+          document.getElementById("register-password").value = "";
+          document.getElementById("register-confirm").value = "";
+          setButtonLoading("login-btn", false, "Sign In");
+          setButtonLoading("register-btn", false, "Create Account");
+
+          showScreen("auth");
+        }
+      });
+
+      document
+        .getElementById("login-password")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") window.handleLogin();
+        });
+      document
+        .getElementById("register-confirm")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") window.handleRegister();
+        });
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // FIRESTORE — LOAD ENTRIES
+      // ─────────────────────────────────────────────────────────────────────────
+      async function loadEntries() {
+        const uid = state.currentUser.uid;
+        const q = query(
+          collection(db, "entries"),
+          where("uid", "==", uid),
+          orderBy("createdAt", "desc"),
+        );
+        const snapshot = await getDocs(q);
+        state.entries = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        return state.entries;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // DASHBOARD — LOAD AND RENDER
+      // ─────────────────────────────────────────────────────────────────────────
+      async function loadAndShowDashboard() {
+        showScreen("dashboard");
+
+        document.getElementById("dashboard-prompt-text").textContent =
+          TODAY_PROMPT;
+        document.getElementById("new-entry-prompt-text").textContent =
+          TODAY_PROMPT;
+
+        document.getElementById("dashboard-loading").classList.remove("hidden");
+        document.getElementById("entries-list").classList.add("hidden");
+        document.getElementById("empty-state").classList.add("hidden");
+        clearMessage("dashboard-error");
+
+        try {
+          const entries = await loadEntries();
+          document.getElementById("dashboard-loading").classList.add("hidden");
+
+          if (entries.length === 0) {
+            document.getElementById("empty-state").classList.remove("hidden");
+            document.getElementById("entry-count-label").textContent = "";
+          } else {
+            renderEntryCards(entries);
+            document.getElementById("entries-list").classList.remove("hidden");
+            const count = entries.length;
+            document.getElementById("entry-count-label").textContent =
+              `${count} ${count === 1 ? "entry" : "entries"}`;
+          }
+        } catch (err) {
+          document.getElementById("dashboard-loading").classList.add("hidden");
+          showMessage(
+            "dashboard-error",
+            getFriendlyFirestoreError(err.code) ||
+              "Failed to load your journal entries.",
+            "error",
+          );
+        }
+      }
+
+      function renderEntryCards(entries) {
+        const container = document.getElementById("entries-list");
+        container.innerHTML = "";
+
+        entries.forEach((entry) => {
+          const preview =
+            (entry.body || "").replace(/\n+/g, " ").trim().slice(0, 120) +
+            ((entry.body || "").length > 120 ? "…" : "");
+
+          const title = entry.title
+            ? escapeHtml(entry.title)
+            : '<em style="opacity:0.5">Untitled</em>';
+          const dateStr = formatDateShort(entry.createdAt);
+          const bodyHtml = preview
+            ? escapeHtml(preview)
+            : '<span style="opacity:0.4">No content yet…</span>';
+
+          const card = document.createElement("div");
+          card.className = "entry-card rounded-2xl p-5";
+          card.style.cssText = `background: var(--color-journal-surface);
+                               border: 1px solid var(--color-journal-border);
+                               box-shadow: 0 2px 12px rgba(44,40,37,0.05);`;
+          card.setAttribute("role", "button");
+          card.setAttribute("tabindex", "0");
+          card.setAttribute("aria-label", `View journal entry from ${dateStr}`);
+
+          card.innerHTML = `
+          <div class="flex items-start justify-between gap-3 mb-2">
+            <h3 class="text-base font-semibold leading-snug flex-1 min-w-0"
+                style="font-family: var(--font-serif); color: var(--color-journal-ink);">
+              ${title}
+            </h3>
+            <span class="flex-shrink-0 text-xs mt-0.5"
+                  style="color: var(--color-journal-muted);">${dateStr}</span>
+          </div>
+          <p class="text-sm leading-relaxed"
+             style="color: var(--color-journal-muted); font-family: var(--font-serif);">
+            ${bodyHtml}
+          </p>
+        `;
+
+          card.addEventListener("click", () => openViewEntry(entry.id));
+          card.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") openViewEntry(entry.id);
+          });
+
+          container.appendChild(card);
+        });
+      }
+
+      function escapeHtml(str) {
+        const div = document.createElement("div");
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // NEW ENTRY SCREEN
+      // ─────────────────────────────────────────────────────────────────────────
+      window.showNewEntryScreen = function () {
+        document.getElementById("new-entry-title").value = "";
+        document.getElementById("new-entry-body").value = "";
+        clearMessage("new-entry-error");
+        clearMessage("new-entry-success");
+        setButtonLoading("save-entry-btn", false, "Save Entry");
+
+        document.getElementById("new-entry-date").textContent = getTodayLong();
+        document.getElementById("new-entry-body").placeholder =
+          `Today's prompt: "${TODAY_PROMPT}"\n\nOr write freely — whatever is on your mind…`;
+
+        showScreen("newEntry");
+        setTimeout(
+          () => document.getElementById("new-entry-title").focus(),
+          100,
+        );
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // FIRESTORE — CREATE ENTRY
+      // ─────────────────────────────────────────────────────────────────────────
+      window.handleSaveEntry = async function () {
+        const title = document.getElementById("new-entry-title").value.trim();
+        const body = document.getElementById("new-entry-body").value.trim();
+
+        clearMessage("new-entry-error");
+        clearMessage("new-entry-success");
+
+        if (!body) {
+          return showMessage(
+            "new-entry-error",
+            "Please write something before saving.",
+          );
+        }
+
+        setButtonLoading("save-entry-btn", true, "Save Entry");
+
+        try {
+          await addDoc(collection(db, "entries"), {
+            uid: state.currentUser.uid,
+            title: title,
+            body: body,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            promptUsed: TODAY_PROMPT,
+          });
+
+          showMessage(
+            "new-entry-success",
+            "Entry saved successfully!",
+            "success",
+          );
+          setButtonLoading("save-entry-btn", false, "Save Entry");
+
+          setTimeout(async () => {
+            await loadAndShowDashboard();
+          }, 900);
+        } catch (err) {
+          showMessage(
+            "new-entry-error",
+            getFriendlyFirestoreError(err.code) || "Failed to save entry.",
+          );
+          setButtonLoading("save-entry-btn", false, "Save Entry");
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // SINGLE ENTRY VIEW
+      // ─────────────────────────────────────────────────────────────────────────
+      function openViewEntry(entryId) {
+        const entry = state.entries.find((e) => e.id === entryId);
+        if (!entry) return;
+
+        state.currentEntryId = entryId;
+        state.currentEntryData = entry;
+        state.previousScreen = "view";
+
+        document.getElementById("view-entry-title").textContent =
+          entry.title || "Untitled";
+        document.getElementById("view-entry-body").textContent =
+          entry.body || "";
+
+        const created = entry.createdAt
+          ? `Written ${formatDate(entry.createdAt, true)}`
+          : "";
+        const updated =
+          entry.updatedAt &&
+          entry.updatedAt.seconds !== entry.createdAt?.seconds
+            ? `  ·  Edited ${formatDate(entry.updatedAt, true)}`
+            : "";
+        document.getElementById("view-entry-dates").textContent =
+          created + updated;
+
+        if (entry.promptUsed) {
+          document.getElementById("view-entry-prompt-text").textContent =
+            entry.promptUsed;
+          document
+            .getElementById("view-entry-prompt-block")
+            .classList.remove("hidden");
+        } else {
+          document
+            .getElementById("view-entry-prompt-block")
+            .classList.add("hidden");
+        }
+
+        showScreen("viewEntry");
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // EDIT ENTRY SCREEN
+      // ─────────────────────────────────────────────────────────────────────────
+      window.showEditScreen = function () {
+        const entry = state.currentEntryData;
+        if (!entry) return;
+
+        state.previousScreen = "view";
+
+        document.getElementById("edit-entry-title").value = entry.title || "";
+        document.getElementById("edit-entry-body").value = entry.body || "";
+
+        if (entry.promptUsed) {
+          document.getElementById("edit-prompt-text").textContent =
+            entry.promptUsed;
+          document
+            .getElementById("edit-original-prompt")
+            .classList.remove("hidden");
+        } else {
+          document
+            .getElementById("edit-original-prompt")
+            .classList.add("hidden");
+        }
+
+        const created = entry.createdAt
+          ? `Created ${formatDate(entry.createdAt, true)}`
+          : "";
+        const updated =
+          entry.updatedAt &&
+          entry.updatedAt.seconds !== entry.createdAt?.seconds
+            ? `  ·  Last edited ${formatDate(entry.updatedAt, true)}`
+            : "";
+        document.getElementById("edit-entry-dates").textContent =
+          created + updated;
+
+        clearMessage("edit-entry-error");
+        clearMessage("edit-entry-success");
+        setButtonLoading("update-entry-btn", false, "Update Entry");
+
+        showScreen("editEntry");
+        setTimeout(
+          () => document.getElementById("edit-entry-title").focus(),
+          100,
+        );
+      };
+
+      window.goBackFromEdit = function () {
+        if (state.currentEntryId) {
+          openViewEntry(state.currentEntryId);
+        } else {
+          showDashboard();
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // FIRESTORE — UPDATE ENTRY
+      // ─────────────────────────────────────────────────────────────────────────
+      window.handleUpdateEntry = async function () {
+        const title = document.getElementById("edit-entry-title").value.trim();
+        const body = document.getElementById("edit-entry-body").value.trim();
+
+        clearMessage("edit-entry-error");
+        clearMessage("edit-entry-success");
+
+        if (!body) {
+          return showMessage("edit-entry-error", "Entry body cannot be empty.");
+        }
+
+        setButtonLoading("update-entry-btn", true, "Update Entry");
+
+        try {
+          const docRef = doc(db, "entries", state.currentEntryId);
+
+          await updateDoc(docRef, {
+            title: title,
+            body: body,
+            updatedAt: serverTimestamp(),
+          });
+
+          const idx = state.entries.findIndex(
+            (e) => e.id === state.currentEntryId,
+          );
+          if (idx !== -1) {
+            state.entries[idx] = {
+              ...state.entries[idx],
+              title,
+              body,
+              updatedAt: Timestamp.now(),
+            };
+            state.currentEntryData = state.entries[idx];
+          }
+
+          showMessage(
+            "edit-entry-success",
+            "Entry updated successfully!",
+            "success",
+          );
+          setButtonLoading("update-entry-btn", false, "Update Entry");
+
+          setTimeout(() => {
+            openViewEntry(state.currentEntryId);
+          }, 900);
+        } catch (err) {
+          showMessage(
+            "edit-entry-error",
+            getFriendlyFirestoreError(err.code) || "Failed to update entry.",
+          );
+          setButtonLoading("update-entry-btn", false, "Update Entry");
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // DELETE CONFIRMATION MODAL
+      // ─────────────────────────────────────────────────────────────────────────
+      window.showDeleteModal = function () {
+        clearMessage("delete-modal-error");
+        document.getElementById("confirm-delete-btn").disabled = false;
+        document.getElementById("confirm-delete-btn").textContent =
+          "Yes, Delete";
+        document
+          .getElementById("delete-modal")
+          .classList.remove("modal-hidden");
+      };
+
+      window.hideDeleteModal = function () {
+        document.getElementById("delete-modal").classList.add("modal-hidden");
+      };
+
+      document
+        .getElementById("delete-modal")
+        .addEventListener("click", function (e) {
+          if (e.target === this) hideDeleteModal();
+        });
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // FIRESTORE — DELETE ENTRY
+      // ─────────────────────────────────────────────────────────────────────────
+      window.handleDeleteEntry = async function () {
+        const btn = document.getElementById("confirm-delete-btn");
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner"></span> Deleting…`;
+
+        try {
+          await deleteDoc(doc(db, "entries", state.currentEntryId));
+
+          state.entries = state.entries.filter(
+            (e) => e.id !== state.currentEntryId,
+          );
+          state.currentEntryId = null;
+          state.currentEntryData = null;
+
+          hideDeleteModal();
+          await loadAndShowDashboard();
+        } catch (err) {
+          showMessage(
+            "delete-modal-error",
+            getFriendlyFirestoreError(err.code) ||
+              "Failed to delete entry. Please try again.",
+            "error",
+          );
+          btn.disabled = false;
+          btn.textContent = "Yes, Delete";
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // DASHBOARD NAVIGATION HELPER
+      // ─────────────────────────────────────────────────────────────────────────
+      window.showDashboard = async function () {
+        await loadAndShowDashboard();
+      };
+    </script>
+  </body>
+</html>
