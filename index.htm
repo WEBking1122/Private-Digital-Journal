@@ -2185,13 +2185,6 @@ service cloud.firestore {
         Timestamp,
       } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
-      import {
-        getStorage,
-        ref,
-        uploadBytes,
-        getDownloadURL,
-      } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-storage.js";
-
       // ─────────────────────────────────────────────────────────────────────────
       // 🔧 REPLACE WITH YOUR FIREBASE CONFIG
       // Found in: Firebase Console → Project Settings → Your Apps → SDK setup
@@ -2199,12 +2192,12 @@ service cloud.firestore {
       // ✅ REPLACE WITH THIS ENTIRE BLOCK:
 
       const firebaseConfig = {
-        apiKey: "AIzaSyDM-ToXSImBPFnxukbrsn5d9hAMnaPvIqI",
-        authDomain: "my-journal-v2.firebaseapp.com",
-        projectId: "my-journal-v2",
-        storageBucket: "my-journal-v2.firebasestorage.app",
-        messagingSenderId: "243121137113",
-        appId: "1:243121137113:web:3a83e2ef5350e02b55e5c8",
+        apiKey: "AIzaSyDHa4CP9ffxQBuCYsCQV7W-tfJTiEAsKo0",
+        authDomain: "my-journal-4e6cf.firebaseapp.com",
+        projectId: "my-journal-4e6cf",
+        storageBucket: "my-journal-4e6cf.firebasestorage.app",
+        messagingSenderId: "388286667559",
+        appId: "1:388286667559:web:0e002110f7fd99b4376702"
       };
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -2240,7 +2233,7 @@ service cloud.firestore {
         persistence: browserLocalPersistence,
       });
       const db = getFirestore(app);
-      const storage = getStorage(app);
+
 
       // ─────────────────────────────────────────────────────────────────────────
       // DAILY REFLECTION PROMPTS
@@ -3204,6 +3197,18 @@ service cloud.firestore {
         if (user) {
           state.currentUser = user;
 
+          // Load photoURL from Firestore (Firebase Auth photoURL has a character
+          // limit that prevents storing base64 images directly in the auth profile)
+          try {
+            const userRef = doc(db, "users", user.uid);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists() && userSnap.data().photoURL) {
+              state.currentUser.photoURL = userSnap.data().photoURL;
+            }
+          } catch (e) {
+            console.warn("Could not load profile photo from Firestore:", e);
+          }
+
           // Initialize Pro Nav features
           await initTheme();
           await loadUserSettings();
@@ -3776,30 +3781,58 @@ service cloud.firestore {
         
         try {
           const file = window.selectedProfilePicFile;
-          const storageRef = ref(storage, `profiles/${state.currentUser.uid}/${file.name}`);
           
-          // 1. Upload to Firebase Storage with timeout
+          // 1. Compress Image to Base64 (max 250x250) to save free tier space
+          const base64Data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (e) => {
+              const img = new Image();
+              img.src = e.target.result;
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_SIZE = 200;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                  if (width > MAX_SIZE) { height = Math.round(height * MAX_SIZE / width); width = MAX_SIZE; }
+                } else {
+                  if (height > MAX_SIZE) { width = Math.round(width * MAX_SIZE / height); height = MAX_SIZE; }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                // 0.5 quality keeps the string small
+                resolve(canvas.toDataURL('image/jpeg', 0.5));
+              };
+              img.onerror = () => reject(new Error("Image processing failed"));
+            };
+            reader.onerror = () => reject(new Error("File reading failed"));
+          });
+          
+          // 2. Save ONLY to Firestore (Firebase Auth photoURL has a character
+          //    limit that rejects base64 strings, so we skip updateProfile)
+          const userRef = doc(db, "users", state.currentUser.uid);
           await Promise.race([
-            uploadBytes(storageRef, file),
-            timeout(15000, "Upload timed out. Is Firebase Storage enabled in your Firebase console? Check your config and rules.")
+            setDoc(userRef, { photoURL: base64Data }, { merge: true }),
+            timeout(10000, "Timed out saving to database.")
           ]);
           
-          // 2. Get Download URL
-          const downloadURL = await Promise.race([
-            getDownloadURL(storageRef),
-            timeout(10000, "Timed out getting image URL.")
-          ]);
-          
-          // 3. Update Auth Profile
-          await Promise.race([
-            updateProfile(state.currentUser, { photoURL: downloadURL }),
-            timeout(10000, "Timed out updating profile.")
-          ]);
-          
-          state.currentUser.photoURL = downloadURL;
+          // 3. Update local state and re-render the nav avatar immediately
+          state.currentUser.photoURL = base64Data;
           renderUserProfileMenu();
           
-          // Success
+          // Also update the profile img preview in settings
+          const imgEl = document.getElementById("settings-profile-img");
+          if (imgEl) {
+            imgEl.src = base64Data;
+            imgEl.classList.remove("hidden");
+            document.getElementById("settings-profile-placeholder").classList.add("hidden");
+          }
+
           showMessage("settings-pic-msg", "Profile photo updated successfully!", "success");
           document.getElementById("btn-upload-pic").classList.add("hidden");
           window.selectedProfilePicFile = null;
@@ -3808,7 +3841,7 @@ service cloud.firestore {
           console.error("Error uploading profile picture:", error);
           const msg = error.message.includes("timed out") 
             ? error.message 
-            : "Failed to upload photo. Please try again.";
+            : `Failed to upload photo: ${error.message}`;
           showMessage("settings-pic-msg", msg);
         } finally {
           setButtonLoading("btn-upload-pic", false, "Upload Photo");
