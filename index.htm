@@ -59,11 +59,31 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Notifications collection
+    // Allows users to read and update their own notifications
+    match /notifications/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
   }
 }
 
   ============================================================
   END OF FIRESTORE SECURITY RULES
+  ============================================================ 
+
+  ============================================================
+  FIREBASE STORAGE CORS CONFIGURATION (Fix for Uploads)
+  ============================================================
+  If your "Upload Photo" button fails or spins because of CORS:
+  
+  1. Open Google Cloud Console: https://console.cloud.google.com/
+  2. Select your Firebase Project from the top dropdown.
+  3. Open Cloud Shell (the >_ icon in the top right).
+  4. Create a cors.json file by running this exact command:
+     echo '[{"origin": ["*"],"method": ["GET", "PUT", "POST", "DELETE", "OPTIONS"],"maxAgeSeconds": 3600}]' > cors.json
+  5. Apply the CORS configuration to your storage bucket by running:
+     gsutil cors set cors.json gs://my-journal-v2.firebasestorage.app
   ============================================================ -->
 
 <!doctype html>
@@ -975,21 +995,49 @@ service cloud.firestore {
        Shows daily prompt card + list of user's entries (newest first).
        Visible after successful authentication.
   ═══════════════════════════════════════════════════════════════════════ -->
-    <div id="screen-dashboard" class="screen screen-fade">
-      <!-- Top navigation bar -->
-      <header
-        class="sticky top-0 z-50 border-b"
-        style="
-          background: rgba(250, 248, 245, 0.92);
-          backdrop-filter: blur(12px);
-          border-color: var(--color-journal-border);
-        "
+    <!-- ════════════════════════════════════════════════════════════════════
+       GLOBAL NAVIGATION BAR
+       Persists across all screens. Content updates dynamically via JS.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <header
+      id="global-header"
+      class="sticky top-0 z-50 border-b hidden"
+      style="
+        background: rgba(250, 248, 245, 0.92);
+        backdrop-filter: blur(12px);
+        border-color: var(--color-journal-border);
+      "
+    >
+      <div
+        class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between"
       >
-        <div
-          class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between"
-        >
-          <!-- Left: Logo + Title -->
-          <div class="flex items-center gap-2.5">
+        <!-- Left: Logo & Back Button -->
+        <div class="flex items-center gap-2.5" style="min-width: 120px;">
+          <!-- Back Button (hidden on Dashboard) -->
+          <button
+            id="nav-back-btn"
+            onclick="goBack()"
+            class="hidden items-center gap-2 text-sm font-medium transition-colors duration-200"
+            style="color: var(--color-journal-muted)"
+            onmouseover="this.style.color = 'var(--color-journal-ink)'"
+            onmouseout="this.style.color = 'var(--color-journal-muted)'"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Back
+          </button>
+
+          <!-- Logo -->
+          <div id="nav-logo" class="flex items-center gap-2.5">
             <svg
               width="22"
               height="22"
@@ -1014,126 +1062,216 @@ service cloud.firestore {
               My Journal
             </span>
           </div>
+        </div>
 
-          <!-- Right: Pro Nav Bar -->
-          <div class="flex items-center gap-2">
-            <!-- Theme Toggle -->
+        <!-- Center: Dynamic Screen Title (hidden on Dashboard) -->
+        <div id="nav-center-title" class="hidden absolute left-1/2 transform -translate-x-1/2">
+          <span
+            class="text-sm font-semibold tracking-wide"
+            style="
+              font-family: var(--font-serif);
+              color: var(--color-journal-ink);
+            "
+            id="nav-title-text"
+          >
+            Journal Entry
+          </span>
+        </div>
+
+        <!-- Right: Actions & Pro Nav Bar -->
+        <div class="flex items-center gap-2">
+          <!-- Screen-Specific Contextual Actions -->
+          <div id="nav-contextual-actions" class="flex items-center gap-2 mr-2 border-r pr-4 border-transparent hidden">
+            <!-- Save button for new entry -->
             <button
-              id="theme-toggle"
-              onclick="handleThemeToggle()"
-              title="Toggle dark mode"
-              class="nav-icon"
-              aria-label="Theme toggle"
+              id="nav-save-btn"
+              onclick="handleSaveEntry()"
+              class="hidden items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg transition-all duration-200 text-white"
+              style="background: var(--color-journal-amber);"
             >
-              <span id="theme-icon">🌙</span>
+              Save
+            </button>
+            
+            <!-- Edit button -->
+            <button
+              id="nav-edit-btn"
+              onclick="showEditScreen()"
+              class="hidden items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg transition-all duration-200"
+              style="
+                color: var(--color-journal-amber);
+                border: 1px solid var(--color-journal-amber-md);
+              "
+              onmouseover="
+                this.style.background = 'var(--color-journal-amber-lt)'
+              "
+              onmouseout="this.style.background = 'transparent'"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              >
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Edit
+            </button>
+            
+            <!-- Delete button -->
+            <button
+              id="nav-delete-btn"
+              onclick="showDeleteModal()"
+              class="hidden items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg transition-all duration-200"
+              style="
+                color: var(--color-journal-danger);
+                border: 1px solid var(--color-journal-danger-lt);
+              "
+              onmouseover="
+                this.style.background = 'var(--color-journal-danger-lt)'
+              "
+              onmouseout="this.style.background = 'transparent'"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              >
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+                <path d="M9 6V4h6v2" />
+              </svg>
+              Delete
+            </button>
+          </div>
+
+          <!-- Theme Toggle -->
+          <button
+            id="theme-toggle"
+            onclick="handleThemeToggle()"
+            title="Toggle dark mode"
+            class="nav-icon"
+            aria-label="Theme toggle"
+          >
+            <span id="theme-icon">🌙</span>
+          </button>
+
+          <!-- Quick Journal (shown only on dashboard) -->
+          <button
+            id="quick-journal"
+            onclick="quickAccessJournal()"
+            class="nav-icon"
+            title="Quick access to journal"
+            aria-label="Quick access journal"
+          >
+            📖
+          </button>
+
+          <!-- Notifications -->
+          <div
+            id="notifications-container"
+            class="nav-notifications"
+            style="position: relative"
+          >
+            <button
+              id="notification-bell"
+              onclick="toggleNotificationPanel()"
+              class="nav-icon"
+              aria-label="Notifications"
+            >
+              🔔
+              <span id="notification-badge" class="badge badge-hidden"
+                >0</span
+              >
             </button>
 
-            <!-- Quick Journal -->
-            <button
-              id="quick-journal"
-              onclick="quickAccessJournal()"
-              class="nav-icon"
-              title="Quick access to journal"
-              aria-label="Quick access journal"
-            >
-              📖
-            </button>
-
-            <!-- Notifications -->
             <div
-              id="notifications-container"
-              class="nav-notifications"
-              style="position: relative"
+              id="notification-panel"
+              class="notification-panel"
+              style="display: none"
             >
-              <button
-                id="notification-bell"
-                onclick="toggleNotificationPanel()"
-                class="nav-icon"
-                aria-label="Notifications"
-              >
-                🔔
-                <span id="notification-badge" class="badge badge-hidden"
-                  >0</span
-                >
-              </button>
-
-              <div
-                id="notification-panel"
-                class="notification-panel"
-                style="display: none"
-              >
-                <div class="notification-panel-header">
-                  <h3 style="margin: 0; font-size: 0.95rem">
-                    📬 Notifications
-                  </h3>
-                  <button
-                    onclick="closeNotificationPanel()"
-                    class="close-btn"
-                    style="
-                      background: none;
-                      border: none;
-                      cursor: pointer;
-                      font-size: 16px;
-                      padding: 0;
-                    "
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div id="notification-list" class="notification-list"></div>
-                <div
-                  id="notification-empty"
-                  class="notification-empty"
-                  style="display: none"
-                >
-                  <p style="margin: 0">No notifications yet</p>
-                  <p style="font-size: 0.75rem; opacity: 0.5; margin-top: 4px">
-                    You're all caught up! 🎉
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Profile Menu -->
-            <div
-              id="profile-dropdown"
-              class="nav-dropdown"
-              style="position: relative"
-            >
-              <button
-                id="profile-trigger"
-                onclick="toggleProfileMenu()"
-                class="nav-pill"
-                aria-label="User profile menu"
-              >
-                <span id="profile-avatar" style="font-size: 16px">👤</span>
-                <span
-                  id="profile-email-preview"
+              <div class="notification-panel-header">
+                <h3 style="margin: 0; font-size: 0.95rem">
+                  📬 Notifications
+                </h3>
+                <button
+                  onclick="closeNotificationPanel()"
+                  class="close-btn"
                   style="
-                    font-size: 0.8rem;
-                    max-width: 80px;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    display: none;
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 16px;
+                    padding: 0;
                   "
                 >
-                  ...
-                </span>
-                <span class="profile-caret">▼</span>
-              </button>
-
+                  ✕
+                </button>
+              </div>
+              <div id="notification-list" class="notification-list"></div>
               <div
-                id="profile-menu-content"
-                class="dropdown-content profile-menu"
+                id="notification-empty"
+                class="notification-empty"
                 style="display: none"
               >
-                <!-- Dynamically injected -->
+                <p style="margin: 0">No notifications yet</p>
+                <p style="font-size: 0.75rem; opacity: 0.5; margin-top: 4px">
+                  You're all caught up! 🎉
+                </p>
               </div>
             </div>
           </div>
-        </div>
-      </header>
 
+          <!-- Profile Menu -->
+          <div
+            id="profile-dropdown"
+            class="nav-dropdown"
+            style="position: relative"
+          >
+            <button
+              id="profile-trigger"
+              onclick="toggleProfileMenu()"
+              class="nav-pill"
+              aria-label="User profile menu"
+            >
+              <span id="profile-avatar" style="font-size: 16px">👤</span>
+              <span
+                id="profile-email-preview"
+                style="
+                  font-size: 0.8rem;
+                  max-width: 80px;
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                  display: none;
+                "
+              >
+                ...
+              </span>
+              <span class="profile-caret">▼</span>
+            </button>
+
+            <div
+              id="profile-menu-content"
+              class="dropdown-content profile-menu"
+              style="display: none"
+            >
+              <!-- Dynamically injected -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div id="screen-dashboard" class="screen screen-fade">
       <!-- Main content -->
       <main class="max-w-2xl mx-auto px-4 py-8">
         <!-- ── Daily Reflection Prompt Card ── -->
@@ -1361,52 +1499,6 @@ service cloud.firestore {
        The daily prompt pre-fills the placeholder for writing inspiration.
   ═══════════════════════════════════════════════════════════════════════ -->
     <div id="screen-new-entry" class="screen screen-fade">
-      <!-- Navigation bar -->
-      <header
-        class="sticky top-0 z-50 border-b"
-        style="
-          background: rgba(250, 248, 245, 0.92);
-          backdrop-filter: blur(12px);
-          border-color: var(--color-journal-border);
-        "
-      >
-        <div
-          class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between"
-        >
-          <button
-            onclick="showDashboard()"
-            class="flex items-center gap-2 text-sm font-medium transition-colors duration-200"
-            style="color: var(--color-journal-muted)"
-            onmouseover="this.style.color = 'var(--color-journal-ink)'"
-            onmouseout="this.style.color = 'var(--color-journal-muted)'"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back
-          </button>
-          <span
-            class="text-sm font-semibold"
-            style="
-              font-family: var(--font-serif);
-              color: var(--color-journal-ink);
-            "
-          >
-            New Entry
-          </span>
-          <div class="w-12"></div>
-          <!-- spacer for centering -->
-        </div>
-      </header>
-
       <main class="max-w-2xl mx-auto px-4 py-8">
         <!-- Prompt reminder pill -->
         <div
@@ -1540,77 +1632,6 @@ service cloud.firestore {
        Has Update and Delete buttons.
   ═══════════════════════════════════════════════════════════════════════ -->
     <div id="screen-edit-entry" class="screen screen-fade">
-      <!-- Navigation bar -->
-      <header
-        class="sticky top-0 z-50 border-b"
-        style="
-          background: rgba(250, 248, 245, 0.92);
-          backdrop-filter: blur(12px);
-          border-color: var(--color-journal-border);
-        "
-      >
-        <div
-          class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between"
-        >
-          <button
-            onclick="goBackFromEdit()"
-            class="flex items-center gap-2 text-sm font-medium transition-colors duration-200"
-            style="color: var(--color-journal-muted)"
-            onmouseover="this.style.color = 'var(--color-journal-ink)'"
-            onmouseout="this.style.color = 'var(--color-journal-muted)'"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back
-          </button>
-          <span
-            class="text-sm font-semibold"
-            style="
-              font-family: var(--font-serif);
-              color: var(--color-journal-ink);
-            "
-          >
-            Edit Entry
-          </span>
-          <!-- Delete trigger button -->
-          <button
-            onclick="showDeleteModal()"
-            class="flex items-center gap-1.5 text-sm font-medium transition-colors duration-200 px-3 py-1.5 rounded-lg"
-            style="color: var(--color-journal-danger)"
-            onmouseover="
-              this.style.background = 'var(--color-journal-danger-lt)'
-            "
-            onmouseout="this.style.background = 'transparent'"
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            >
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-              <path d="M10 11v6" />
-              <path d="M14 11v6" />
-              <path d="M9 6V4h6v2" />
-            </svg>
-            Delete
-          </button>
-        </div>
-      </header>
-
       <main class="max-w-2xl mx-auto px-4 py-8">
         <!-- Original prompt that inspired this entry (shown for context) -->
         <div
@@ -1672,17 +1693,17 @@ service cloud.firestore {
             type="text"
             placeholder="Entry title (optional)"
             maxlength="200"
-            class="w-full px-0 py-2 text-2xl font-bold bg-transparent border-none outline-none"
+            class="w-full px-4 py-3 text-2xl font-bold rounded-xl bg-transparent outline-none focus:ring-1 focus:ring-amber-500 transition-colors"
             style="
               font-family: var(--font-serif);
               color: var(--color-journal-ink);
-              border-bottom: 1.5px solid var(--color-journal-border);
+              border: 1.5px solid var(--color-journal-border);
             "
             onfocus="
-              this.style.borderBottomColor = 'var(--color-journal-amber)'
+              this.style.borderColor = 'var(--color-journal-amber)'
             "
             onblur="
-              this.style.borderBottomColor = 'var(--color-journal-border)'
+              this.style.borderColor = 'var(--color-journal-border)'
             "
           />
         </div>
@@ -1697,11 +1718,20 @@ service cloud.firestore {
         <!-- Body textarea -->
         <textarea
           id="edit-entry-body"
-          class="journal-textarea w-full px-0 bg-transparent border-none outline-none"
-          style="color: var(--color-journal-ink)"
+          class="journal-textarea w-full p-4 rounded-xl bg-transparent outline-none focus:ring-1 focus:ring-amber-500 transition-colors"
+          style="
+            color: var(--color-journal-ink);
+            border: 1.5px solid var(--color-journal-border);
+            min-height: 300px;
+          "
           placeholder="Start writing here…"
-        >
-        </textarea>
+          onfocus="
+            this.style.borderColor = 'var(--color-journal-amber)'
+          "
+          onblur="
+            this.style.borderColor = 'var(--color-journal-border)'
+          "
+        ></textarea>
 
         <!-- Error/success messages -->
         <div id="edit-entry-error" class="msg-error msg-hidden"></div>
@@ -1715,8 +1745,8 @@ service cloud.firestore {
           <button
             id="update-entry-btn"
             onclick="handleUpdateEntry()"
-            class="flex-1 py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200"
-            style="background: var(--color-journal-amber)"
+            class="flex-1 py-3 rounded-xl text-sm font-semibold transition-all duration-200"
+            style="background: var(--color-journal-amber); color: #000;"
           >
             Update Entry
           </button>
@@ -1741,77 +1771,6 @@ service cloud.firestore {
        Read-only view of one complete journal entry.
   ═══════════════════════════════════════════════════════════════════════ -->
     <div id="screen-view-entry" class="screen screen-fade">
-      <!-- Navigation bar -->
-      <header
-        class="sticky top-0 z-50 border-b"
-        style="
-          background: rgba(250, 248, 245, 0.92);
-          backdrop-filter: blur(12px);
-          border-color: var(--color-journal-border);
-        "
-      >
-        <div
-          class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between"
-        >
-          <button
-            onclick="showDashboard()"
-            class="flex items-center gap-2 text-sm font-medium transition-colors duration-200"
-            style="color: var(--color-journal-muted)"
-            onmouseover="this.style.color = 'var(--color-journal-ink)'"
-            onmouseout="this.style.color = 'var(--color-journal-muted)'"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back
-          </button>
-          <span
-            class="text-sm font-semibold"
-            style="
-              font-family: var(--font-serif);
-              color: var(--color-journal-ink);
-            "
-          >
-            Journal Entry
-          </span>
-          <!-- Edit button -->
-          <button
-            onclick="showEditScreen()"
-            class="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg transition-all duration-200"
-            style="
-              color: var(--color-journal-amber);
-              border: 1px solid var(--color-journal-amber-md);
-            "
-            onmouseover="
-              this.style.background = 'var(--color-journal-amber-lt)'
-            "
-            onmouseout="this.style.background = 'transparent'"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            >
-              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-            Edit
-          </button>
-        </div>
-      </header>
-
       <main class="max-w-2xl mx-auto px-4 py-8">
         <!-- Timestamps -->
         <div class="mb-2">
@@ -1864,6 +1823,203 @@ service cloud.firestore {
           ></p>
         </div>
       </main>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+       SCREEN 6 — SETTINGS SCREEN
+       User profile settings, change password, delete account.
+  ═══════════════════════════════════════════════════════════════════════ -->
+    <div id="screen-settings" class="screen screen-fade">
+      <main class="max-w-2xl mx-auto px-4 py-8">
+        
+        <!-- Profile Picture Section -->
+        <section class="mb-10 pb-10" style="border-bottom: 1px solid var(--color-journal-border);">
+          <h2 class="text-lg font-bold mb-6" style="color: var(--color-journal-ink); font-family: var(--font-serif);">Profile Picture</h2>
+          <div class="flex items-center gap-6">
+            <div class="relative group cursor-pointer" onclick="document.getElementById('profile-upload-input').click()">
+              <input type="file" id="profile-upload-input" accept="image/*" class="hidden" onchange="handleProfilePicSelected(event)" />
+              <div 
+                class="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center bg-gray-200"
+                style="border: 2px solid var(--color-journal-amber);"
+              >
+                <img id="settings-profile-img" src="" alt="Profile" class="w-full h-full object-cover hidden" />
+                <span id="settings-profile-placeholder" class="text-3xl">👤</span>
+              </div>
+              <!-- Hover overlay -->
+              <div class="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <span class="text-white text-xs font-semibold">Change</span>
+              </div>
+            </div>
+            <div>
+              <button 
+                id="btn-upload-pic"
+                onclick="handleProfilePicUpload()"
+                class="px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-50 hidden"
+                style="background: var(--color-journal-amber);"
+              >
+                Upload Photo
+              </button>
+              <div id="settings-pic-msg" class="text-xs mt-2 msg-hidden"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Basic Info Section -->
+        <section class="mb-10 pb-10" style="border-bottom: 1px solid var(--color-journal-border);">
+          <h2 class="text-lg font-bold mb-6" style="color: var(--color-journal-ink); font-family: var(--font-serif);">Basic Info</h2>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-medium mb-1.5" style="color: var(--color-journal-muted);">Email (Read-only)</label>
+              <input 
+                type="email" 
+                id="settings-email" 
+                readonly 
+                class="w-full px-4 py-2.5 rounded-lg text-sm bg-transparent outline-none"
+                style="color: var(--color-journal-muted); border: 1.5px solid var(--color-journal-border); opacity: 0.7;"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-medium mb-1.5" style="color: var(--color-journal-muted);">Display Name</label>
+              <input 
+                type="text" 
+                id="settings-display-name" 
+                class="w-full px-4 py-2.5 rounded-lg text-sm bg-transparent outline-none transition-colors"
+                style="color: var(--color-journal-ink); border: 1.5px solid var(--color-journal-border);"
+                onfocus="this.style.borderColor = 'var(--color-journal-amber)'"
+                onblur="this.style.borderColor = 'var(--color-journal-border)'"
+              />
+            </div>
+            <div id="settings-name-msg" class="text-xs msg-hidden"></div>
+            <button 
+              id="btn-update-name"
+              onclick="handleUpdateDisplayName()"
+              class="mt-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200"
+              style="background: var(--color-journal-amber); color: #000;"
+            >
+              Update Name
+            </button>
+          </div>
+        </section>
+
+        <!-- Security / Password Section -->
+        <section class="mb-10 pb-10" style="border-bottom: 1px solid var(--color-journal-border);">
+          <h2 class="text-lg font-bold mb-6" style="color: var(--color-journal-ink); font-family: var(--font-serif);">Security</h2>
+          <p class="text-sm mb-4" style="color: var(--color-journal-muted);">Update your password to stay secure.</p>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-medium mb-1.5" style="color: var(--color-journal-muted);">Current Password</label>
+              <input 
+                type="password" 
+                id="settings-current-pwd" 
+                class="w-full px-4 py-2.5 rounded-lg text-sm bg-transparent outline-none transition-colors"
+                style="color: var(--color-journal-ink); border: 1.5px solid var(--color-journal-border);"
+                onfocus="this.style.borderColor = 'var(--color-journal-amber)'"
+                onblur="this.style.borderColor = 'var(--color-journal-border)'"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-medium mb-1.5" style="color: var(--color-journal-muted);">New Password</label>
+              <input 
+                type="password" 
+                id="settings-new-pwd" 
+                class="w-full px-4 py-2.5 rounded-lg text-sm bg-transparent outline-none transition-colors"
+                style="color: var(--color-journal-ink); border: 1.5px solid var(--color-journal-border);"
+                onfocus="this.style.borderColor = 'var(--color-journal-amber)'"
+                onblur="this.style.borderColor = 'var(--color-journal-border)'"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-medium mb-1.5" style="color: var(--color-journal-muted);">Confirm New Password</label>
+              <input 
+                type="password" 
+                id="settings-confirm-pwd" 
+                class="w-full px-4 py-2.5 rounded-lg text-sm bg-transparent outline-none transition-colors"
+                style="color: var(--color-journal-ink); border: 1.5px solid var(--color-journal-border);"
+                onfocus="this.style.borderColor = 'var(--color-journal-amber)'"
+                onblur="this.style.borderColor = 'var(--color-journal-border)'"
+              />
+            </div>
+            <div id="settings-pwd-msg" class="text-xs msg-hidden"></div>
+            <button 
+              id="btn-update-pwd"
+              onclick="handleChangePassword()"
+              class="mt-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200"
+              style="border: 1.5px solid var(--color-journal-amber); color: var(--color-journal-amber);"
+            >
+              Change Password
+            </button>
+          </div>
+        </section>
+
+        <!-- Danger Zone -->
+        <section class="p-6 rounded-xl" style="border: 1px solid var(--color-journal-danger-lt); background: rgba(220, 38, 38, 0.05);">
+          <h2 class="text-lg font-bold mb-2 flex items-center gap-2" style="color: var(--color-journal-danger); font-family: var(--font-serif);">
+            ⚠️ Danger Zone
+          </h2>
+          <p class="text-sm mb-6" style="color: var(--color-journal-muted);">
+            Once you delete your account, there is no going back. All your journal entries, settings, and profile data will be permanently erased.
+          </p>
+          <button 
+            onclick="showDeleteAccountModal()"
+            class="px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all duration-200"
+            style="background: var(--color-journal-danger);"
+          >
+            Delete Account
+          </button>
+        </section>
+
+      </main>
+    </div>
+
+    <!-- DELETE ACCOUNT MODAL -->
+    <div
+      id="delete-account-modal"
+      class="modal-overlay modal-hidden z-[200]"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        class="w-full max-w-md mx-4 rounded-2xl p-6 shadow-2xl"
+        style="
+          background: var(--color-journal-surface);
+          border: 1px solid var(--color-journal-danger-lt);
+        "
+      >
+        <h3 class="text-lg font-bold mb-4" style="color: var(--color-journal-danger);">Delete Account?</h3>
+        <p class="text-sm mb-6 leading-relaxed" style="color: var(--color-journal-ink);">
+          Are you absolutely sure you want to delete your account? <br><br>
+          <span class="font-bold">This will permanently delete all your entries and your login credentials.</span>
+        </p>
+        <div class="mb-6">
+          <label class="block text-xs font-medium mb-1.5" style="color: var(--color-journal-muted);">To confirm, enter your password:</label>
+          <input 
+            type="password" 
+            id="delete-account-pwd" 
+            class="w-full px-4 py-2.5 rounded-lg text-sm bg-transparent outline-none transition-colors"
+            style="color: var(--color-journal-ink); border: 1.5px solid var(--color-journal-danger-lt);"
+          />
+        </div>
+        <div id="delete-account-msg" class="text-xs mb-4 msg-error msg-hidden"></div>
+        <div class="flex gap-3">
+          <button
+            onclick="hideDeleteAccountModal()"
+            class="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+            style="border: 1.5px solid var(--color-journal-border); color: var(--color-journal-muted);"
+          >
+            Cancel
+          </button>
+          <button
+            id="btn-confirm-delete-account"
+            onclick="handleDeleteAccount()"
+            class="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+            style="background: var(--color-journal-danger);"
+          >
+            Permanently Delete
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- ════════════════════════════════════════════════════════════════════
@@ -2003,6 +2159,11 @@ service cloud.firestore {
         onAuthStateChanged,
         browserLocalPersistence,
         setPersistence,
+        updateProfile,
+        updatePassword,
+        reauthenticateWithCredential,
+        EmailAuthProvider,
+        deleteUser,
       } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
 
       import {
@@ -2023,6 +2184,13 @@ service cloud.firestore {
         serverTimestamp,
         Timestamp,
       } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+      import {
+        getStorage,
+        ref,
+        uploadBytes,
+        getDownloadURL,
+      } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-storage.js";
 
       // ─────────────────────────────────────────────────────────────────────────
       // 🔧 REPLACE WITH YOUR FIREBASE CONFIG
@@ -2072,6 +2240,7 @@ service cloud.firestore {
         persistence: browserLocalPersistence,
       });
       const db = getFirestore(app);
+      const storage = getStorage(app);
 
       // ─────────────────────────────────────────────────────────────────────────
       // DAILY REFLECTION PROMPTS
@@ -2174,7 +2343,103 @@ service cloud.firestore {
         newEntry: document.getElementById("screen-new-entry"),
         editEntry: document.getElementById("screen-edit-entry"),
         viewEntry: document.getElementById("screen-view-entry"),
+        settings: document.getElementById("screen-settings"),
       };
+
+      function updateHeaderContext(screenName) {
+        const header = document.getElementById("global-header");
+        const backBtn = document.getElementById("nav-back-btn");
+        const logo = document.getElementById("nav-logo");
+        const titleContainer = document.getElementById("nav-center-title");
+        const titleText = document.getElementById("nav-title-text");
+        const contextualActions = document.getElementById("nav-contextual-actions");
+        
+        const saveBtn = document.getElementById("nav-save-btn");
+        const editBtn = document.getElementById("nav-edit-btn");
+        const deleteBtn = document.getElementById("nav-delete-btn");
+        
+        const quickJournalBtn = document.getElementById("quick-journal");
+
+        // Hide header entirely on auth screen
+        if (screenName === "auth") {
+          header.classList.add("hidden");
+          return;
+        } else {
+          header.classList.remove("hidden");
+        }
+
+        // Reset display states before configuring for specific screens
+        backBtn.classList.add("hidden"); backBtn.classList.remove("flex");
+        logo.classList.remove("hidden"); logo.classList.add("flex");
+        titleContainer.classList.add("hidden"); titleContainer.classList.remove("flex");
+        contextualActions.classList.add("hidden"); contextualActions.classList.remove("flex");
+        
+        saveBtn.classList.add("hidden"); saveBtn.classList.remove("flex");
+        editBtn.classList.add("hidden"); editBtn.classList.remove("flex");
+        deleteBtn.classList.add("hidden"); deleteBtn.classList.remove("flex");
+        
+        quickJournalBtn.classList.remove("hidden"); quickJournalBtn.classList.add("flex");
+
+        // Configure based on specific active screen
+        switch (screenName) {
+          case "dashboard":
+            // Dashboard: Logo only on left, 'Quick Journal' visible
+            break;
+            
+          case "newEntry":
+            // New Entry: Back instead of Logo, "New Entry" title, Save button, hide Quick Journal
+            backBtn.classList.remove("hidden"); backBtn.classList.add("flex");
+            logo.classList.add("hidden"); logo.classList.remove("flex");
+            
+            titleText.textContent = "New Entry";
+            titleContainer.classList.remove("hidden"); titleContainer.classList.add("flex");
+            
+            contextualActions.classList.remove("hidden"); contextualActions.classList.add("flex");
+            saveBtn.classList.remove("hidden"); saveBtn.classList.add("flex");
+            
+            quickJournalBtn.classList.add("hidden"); quickJournalBtn.classList.remove("flex");
+            break;
+            
+          case "viewEntry":
+            // View Entry: Back, "Journal Entry" title, Edit button, hide Quick Journal
+            backBtn.classList.remove("hidden"); backBtn.classList.add("flex");
+            logo.classList.add("hidden"); logo.classList.remove("flex");
+            
+            titleText.textContent = "Journal Entry";
+            titleContainer.classList.remove("hidden"); titleContainer.classList.add("flex");
+            
+            contextualActions.classList.remove("hidden"); contextualActions.classList.add("flex");
+            editBtn.classList.remove("hidden"); editBtn.classList.add("flex");
+            
+            quickJournalBtn.classList.add("hidden"); quickJournalBtn.classList.remove("flex");
+            break;
+            
+          case "editEntry":
+            // Edit Entry: Back, "Edit Entry" title, Delete button, hide Quick Journal
+            backBtn.classList.remove("hidden"); backBtn.classList.add("flex");
+            logo.classList.add("hidden"); logo.classList.remove("flex");
+            
+            titleText.textContent = "Edit Entry";
+            titleContainer.classList.remove("hidden"); titleContainer.classList.add("flex");
+            
+            contextualActions.classList.remove("hidden"); contextualActions.classList.add("flex");
+            deleteBtn.classList.remove("hidden"); deleteBtn.classList.add("flex");
+            
+            quickJournalBtn.classList.add("hidden"); quickJournalBtn.classList.remove("flex");
+            break;
+
+          case "settings":
+            // Settings: Back, "Settings" title, hide contextual buttons and quick journal
+            backBtn.classList.remove("hidden"); backBtn.classList.add("flex");
+            logo.classList.add("hidden"); logo.classList.remove("flex");
+
+            titleText.textContent = "Settings";
+            titleContainer.classList.remove("hidden"); titleContainer.classList.add("flex");
+
+            quickJournalBtn.classList.add("hidden"); quickJournalBtn.classList.remove("flex");
+            break;
+        }
+      }
 
       function showScreen(name) {
         Object.entries(SCREENS).forEach(([key, el]) => {
@@ -2188,6 +2453,8 @@ service cloud.firestore {
         window.scrollTo({ top: 0, behavior: "instant" });
         // Re-apply theme when switching screens
         applyTheme(state.theme);
+        // Update global navigation bar context
+        updateHeaderContext(name);
       }
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -2237,13 +2504,13 @@ service cloud.firestore {
         el.classList.add("msg-hidden");
       }
 
-      function setButtonLoading(id, loading, label) {
+      function setButtonLoading(id, loading, label, loadingText = "Saving…") {
         const btn = document.getElementById(id);
         if (!btn) return;
         btn.disabled = loading;
         btn.style.opacity = loading ? "0.75" : "1";
         btn.innerHTML = loading
-          ? `<span class="spinner"></span> Saving…`
+          ? `<span class="spinner"></span> ${loadingText}`
           : label;
       }
 
@@ -2648,22 +2915,45 @@ service cloud.firestore {
       function renderUserProfileMenu() {
         const menu = document.getElementById("profile-menu-content");
         const previewSpan = document.getElementById("profile-email-preview");
+        const avatarSpan = document.getElementById("profile-avatar");
 
         if (!state.currentUser) return;
 
         const email = state.currentUser.email;
-        previewSpan.textContent = email.split("@")[0] + "@...";
+        const displayName = state.currentUser.displayName;
+        const photoURL = state.currentUser.photoURL;
+        
+        if (displayName) {
+          previewSpan.textContent = displayName;
+        } else {
+          previewSpan.textContent = email.split("@")[0] + "@...";
+        }
         previewSpan.style.display = "inline";
+        
+        if (photoURL && avatarSpan) {
+          avatarSpan.innerHTML = `<img src="${escapeHtml(photoURL)}" alt="Profile" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover; display: inline-block;">`;
+          avatarSpan.style.fontSize = "inherit";
+        } else if (avatarSpan) {
+          avatarSpan.innerHTML = "👤";
+          avatarSpan.style.fontSize = "16px";
+        }
 
         menu.innerHTML = `
           <div style="padding: 12px 14px; border-bottom: 1px solid var(--color-journal-border);">
             <p style="font-weight: 500; font-size: 0.875rem; margin: 0; color: var(--color-journal-ink);">
-              ${escapeHtml(email)}
+              ${escapeHtml(displayName || email)}
             </p>
             <p style="font-size: 0.75rem; color: var(--color-journal-muted); margin: 4px 0 0 0;">
               Account
             </p>
           </div>
+          <button 
+            onclick="openSettingsScreen(); closeProfileMenu()" 
+            class="profile-menu-item"
+            style="color: var(--color-journal-ink);"
+          >
+            ⚙️ Settings
+          </button>
           <button 
             onclick="handleSignOut(); closeProfileMenu()" 
             class="profile-menu-item"
@@ -3393,6 +3683,281 @@ service cloud.firestore {
         await loadAndShowDashboard();
       };
 
+      window.goBack = function () {
+        const backBtnText = document.getElementById("nav-title-text").textContent;
+        if (state.previousScreen === "view" && document.getElementById("screen-edit-entry").classList.contains("screen-active")) {
+          // If we came from view and are on edit, go back to view
+          openViewEntry(state.currentEntryId);
+        } else if (backBtnText === "Settings") {
+          showDashboard();
+        } else {
+          showDashboard();
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // SETTINGS PAGE NAVIGATION
+      // ─────────────────────────────────────────────────────────────────────────
+      window.openSettingsScreen = function() {
+        if (!state.currentUser) return;
+        
+        // Populate current values
+        document.getElementById("settings-email").value = state.currentUser.email || "";
+        document.getElementById("settings-display-name").value = state.currentUser.displayName || "";
+        
+        const photoURL = state.currentUser.photoURL;
+        const imgEl = document.getElementById("settings-profile-img");
+        const placeholder = document.getElementById("settings-profile-placeholder");
+        
+        if (photoURL) {
+          imgEl.src = photoURL;
+          imgEl.classList.remove("hidden");
+          placeholder.classList.add("hidden");
+        } else {
+          imgEl.src = "";
+          imgEl.classList.add("hidden");
+          placeholder.classList.remove("hidden");
+        }
+        
+        // Clear passwords and messages
+        document.getElementById("settings-current-pwd").value = "";
+        document.getElementById("settings-new-pwd").value = "";
+        document.getElementById("settings-confirm-pwd").value = "";
+        clearMessage("settings-name-msg");
+        clearMessage("settings-pwd-msg");
+        clearMessage("settings-pic-msg");
+        
+        document.getElementById("btn-upload-pic").classList.add("hidden");
+        window.selectedProfilePicFile = null;
+
+        showScreen("settings");
+      };
+
+      window.handleProfilePicSelected = function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        // Basic validation
+        if (!file.type.startsWith("image/")) {
+          showMessage("settings-pic-msg", "Please select an image file.");
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+          showMessage("settings-pic-msg", "Image must be under 5MB.");
+          return;
+        }
+
+        clearMessage("settings-pic-msg");
+        window.selectedProfilePicFile = file;
+        
+        // Preview locally
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const imgEl = document.getElementById("settings-profile-img");
+          const placeholder = document.getElementById("settings-profile-placeholder");
+          
+          imgEl.src = e.target.result;
+          imgEl.classList.remove("hidden");
+          placeholder.classList.add("hidden");
+          
+          // Show upload button
+          document.getElementById("btn-upload-pic").classList.remove("hidden");
+        };
+        reader.readAsDataURL(file);
+      };
+
+      window.handleProfilePicUpload = async function() {
+        if (!state.currentUser || !window.selectedProfilePicFile) return;
+        
+        setButtonLoading("btn-upload-pic", true, "Upload Photo", "Uploading...");
+        clearMessage("settings-pic-msg");
+        
+        const timeout = (ms, msg) => new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms));
+        
+        try {
+          const file = window.selectedProfilePicFile;
+          const storageRef = ref(storage, `profiles/${state.currentUser.uid}/${file.name}`);
+          
+          // 1. Upload to Firebase Storage with timeout
+          await Promise.race([
+            uploadBytes(storageRef, file),
+            timeout(15000, "Upload timed out. Is Firebase Storage enabled in your Firebase console? Check your config and rules.")
+          ]);
+          
+          // 2. Get Download URL
+          const downloadURL = await Promise.race([
+            getDownloadURL(storageRef),
+            timeout(10000, "Timed out getting image URL.")
+          ]);
+          
+          // 3. Update Auth Profile
+          await Promise.race([
+            updateProfile(state.currentUser, { photoURL: downloadURL }),
+            timeout(10000, "Timed out updating profile.")
+          ]);
+          
+          state.currentUser.photoURL = downloadURL;
+          renderUserProfileMenu();
+          
+          // Success
+          showMessage("settings-pic-msg", "Profile photo updated successfully!", "success");
+          document.getElementById("btn-upload-pic").classList.add("hidden");
+          window.selectedProfilePicFile = null;
+          
+        } catch (error) {
+          console.error("Error uploading profile picture:", error);
+          const msg = error.message.includes("timed out") 
+            ? error.message 
+            : "Failed to upload photo. Please try again.";
+          showMessage("settings-pic-msg", msg);
+        } finally {
+          setButtonLoading("btn-upload-pic", false, "Upload Photo");
+        }
+      };
+
+      window.handleUpdateDisplayName = async function() {
+        if (!state.currentUser) return;
+        
+        const newName = document.getElementById("settings-display-name").value.trim();
+        if (!newName) {
+          showMessage("settings-name-msg", "Display Name cannot be empty.");
+          return;
+        }
+        
+        setButtonLoading("btn-update-name", true, "Updating...");
+        clearMessage("settings-name-msg");
+        
+        try {
+          await updateProfile(state.currentUser, { displayName: newName });
+          state.currentUser.displayName = newName;
+          renderUserProfileMenu();
+          showMessage("settings-name-msg", "Name updated successfully!", "success");
+        } catch (error) {
+          console.error("Error updating display name:", error);
+          showMessage("settings-name-msg", "Failed to update name.");
+        } finally {
+          setButtonLoading("btn-update-name", false, "Update Name");
+        }
+      };
+
+      window.handleChangePassword = async function() {
+        if (!state.currentUser) return;
+        
+        const currentPwd = document.getElementById("settings-current-pwd").value;
+        const newPwd = document.getElementById("settings-new-pwd").value;
+        const confirmPwd = document.getElementById("settings-confirm-pwd").value;
+        
+        if (!currentPwd || !newPwd || !confirmPwd) {
+          showMessage("settings-pwd-msg", "Please fill in all password fields.");
+          return;
+        }
+        if (newPwd !== confirmPwd) {
+          showMessage("settings-pwd-msg", "New passwords do not match.");
+          return;
+        }
+        if (newPwd.length < 6) {
+          showMessage("settings-pwd-msg", "New password must be at least 6 characters.");
+          return;
+        }
+        
+        setButtonLoading("btn-update-pwd", true, "Changing...");
+        clearMessage("settings-pwd-msg");
+        
+        try {
+          // 1. Re-authenticate user with current password
+          const credential = EmailAuthProvider.credential(state.currentUser.email, currentPwd);
+          await reauthenticateWithCredential(state.currentUser, credential);
+          
+          // 2. Update to new password
+          await updatePassword(state.currentUser, newPwd);
+          
+          showMessage("settings-pwd-msg", "Password changed successfully!", "success");
+          document.getElementById("settings-current-pwd").value = "";
+          document.getElementById("settings-new-pwd").value = "";
+          document.getElementById("settings-confirm-pwd").value = "";
+          
+        } catch (error) {
+          console.error("Error changing password:", error);
+          if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+            showMessage("settings-pwd-msg", "Incorrect current password.");
+          } else {
+            showMessage("settings-pwd-msg", "Failed to change password: " + (error.message || "Unknown error"));
+          }
+        } finally {
+          setButtonLoading("btn-update-pwd", false, "Change Password");
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // DELETE ACCOUNT LOGIC
+      // ─────────────────────────────────────────────────────────────────────────
+      window.showDeleteAccountModal = function() {
+        document.getElementById("delete-account-pwd").value = "";
+        clearMessage("delete-account-msg");
+        const modal = document.getElementById("delete-account-modal");
+        modal.classList.remove("modal-hidden");
+        // small timeout to allow display:flex to apply before asserting opacity
+        setTimeout(() => modal.classList.add("modal-visible"), 10);
+      };
+
+      window.hideDeleteAccountModal = function() {
+        const modal = document.getElementById("delete-account-modal");
+        modal.classList.remove("modal-visible");
+        setTimeout(() => modal.classList.add("modal-hidden"), 200);
+      };
+
+      window.handleDeleteAccount = async function() {
+        if (!state.currentUser) return;
+        
+        const pwd = document.getElementById("delete-account-pwd").value;
+        if (!pwd) {
+          showMessage("delete-account-msg", "Password is required to delete your account.");
+          return;
+        }
+        
+        setButtonLoading("btn-confirm-delete-account", true, "Deleting...");
+        clearMessage("delete-account-msg");
+        
+        try {
+          // 1. Re-authenticate to ensure security requirement is met
+          const credential = EmailAuthProvider.credential(state.currentUser.email, pwd);
+          await reauthenticateWithCredential(state.currentUser, credential);
+          
+          // 2. Delete all Journal Entries from Firestore
+          // We query all entries where userId == uid
+          const entriesQuery = query(
+            collection(db, "entries"),
+            where("userId", "==", state.currentUser.uid)
+          );
+          const entriesSnap = await getDocs(entriesQuery);
+          
+          // Delete them off firestore
+          const deletePromises = [];
+          entriesSnap.forEach((docSnap) => {
+            deletePromises.push(deleteDoc(doc(db, "entries", docSnap.id)));
+          });
+          await Promise.all(deletePromises);
+          
+          // 3. Delete user preferences/settings doc (optional but good practice)
+          await deleteDoc(doc(db, "users", state.currentUser.uid, "settings", "preferences"));
+          
+          // 4. Finally, delete the Auth User Account
+          await deleteUser(state.currentUser);
+          
+          // Success. The onAuthStateChanged listener will catch the signout and route to auth screen.
+          hideDeleteAccountModal();
+          
+        } catch (error) {
+          console.error("Error deleting account:", error);
+          if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+            showMessage("delete-account-msg", "Incorrect password.");
+          } else {
+            showMessage("delete-account-msg", "Failed to delete account. Please try again or contact support.");
+          }
+          setButtonLoading("btn-confirm-delete-account", false, "Permanently Delete");
+        }
+      };
+
       // ─────────────────────────────────────────────────────────────────────────
       // EXPOSE ALL TOP NAV FUNCTIONS TO WINDOW FOR HTML onclick HANDLERS
       // ─────────────────────────────────────────────────────────────────────────
@@ -3411,6 +3976,13 @@ service cloud.firestore {
       window.createNotification = createNotification;
       window.teardownNotificationsListener = teardownNotificationsListener;
       window.openViewEntry = openViewEntry;
+      window.showDeleteAccountModal = showDeleteAccountModal;
+      window.hideDeleteAccountModal = hideDeleteAccountModal;
+      window.handleDeleteAccount = handleDeleteAccount;
+      window.handleChangePassword = handleChangePassword;
+      window.handleUpdateDisplayName = handleUpdateDisplayName;
+      window.handleProfilePicUpload = handleProfilePicUpload;
+      window.handleProfilePicSelected = handleProfilePicSelected;
 
       // ─────────────────────────────────────────────────────────────────────────
       // CLOSE DROPDOWNS WHEN CLICKING OUTSIDE
