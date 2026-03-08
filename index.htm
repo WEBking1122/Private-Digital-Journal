@@ -53,6 +53,12 @@ service cloud.firestore {
       allow delete: if request.auth != null
                     && request.auth.uid == resource.data.uid;
     }
+
+    // User preferences & settings collection
+    // Allows users to save their theme choices and notifications
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
   }
 }
 
@@ -293,6 +299,206 @@ service cloud.firestore {
         filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.3));
       }
 
+      /* ─── Top Nav Components ─── */
+      .nav-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        border: 1px solid var(--color-journal-border);
+        background: transparent;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        transition: all 0.2s ease;
+        position: relative;
+      }
+
+      .nav-icon:hover {
+        border-color: var(--color-journal-amber);
+        transform: scale(1.08);
+        background: rgba(200, 118, 42, 0.05);
+      }
+
+      .nav-icon:active {
+        transform: scale(0.95);
+      }
+
+      .nav-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 20px;
+        border: 1px solid var(--color-journal-border);
+        background: var(--color-journal-surface);
+        cursor: pointer;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+        position: relative;
+      }
+
+      .nav-pill:hover {
+        border-color: var(--color-journal-amber);
+        background: var(--color-journal-amber-lt);
+        transform: scale(1.02);
+      }
+
+      .profile-caret {
+        transition: transform 0.2s ease;
+        font-size: 10px;
+      }
+
+      .nav-dropdown.open .profile-caret {
+        transform: rotate(180deg);
+      }
+
+      .dropdown-content {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: var(--color-journal-surface);
+        border: 1px solid var(--color-journal-border);
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(44, 40, 37, 0.12);
+        margin-top: 8px;
+        min-width: 240px;
+        z-index: 50;
+        animation: slideDownFade 0.15s ease both;
+      }
+
+      @keyframes slideDownFade {
+        from {
+          opacity: 0;
+          transform: translateY(-8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .profile-menu-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 10px 14px;
+        border: none;
+        background: transparent;
+        color: var(--color-journal-ink);
+        cursor: pointer;
+        font-size: 0.875rem;
+        transition: all 0.15s ease;
+      }
+
+      .profile-menu-item:hover {
+        background: rgba(200, 118, 42, 0.08);
+        transform: translateX(4px);
+      }
+
+      .badge {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        background: var(--color-journal-danger);
+        color: white;
+        font-size: 11px;
+        font-weight: 600;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: badgePulse 0.4s ease both;
+        box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+      }
+
+      .badge-hidden {
+        display: none;
+      }
+
+      @keyframes badgePulse {
+        0% {
+          transform: scale(0);
+        }
+        50% {
+          transform: scale(1.2);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      .notification-panel {
+        position: absolute;
+        top: 100%;
+        right: -10px;
+        background: var(--color-journal-surface);
+        border: 1px solid var(--color-journal-border);
+        border-radius: 12px;
+        box-shadow: 0 12px 48px rgba(44, 40, 37, 0.15);
+        width: 360px;
+        max-height: 420px;
+        display: flex;
+        flex-direction: column;
+        z-index: 50;
+        margin-top: 12px;
+        animation: slideDownFade 0.2s ease both;
+      }
+
+      .notification-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--color-journal-border);
+      }
+
+      .notification-list {
+        flex: 1;
+        overflow-y: auto;
+        max-height: 340px;
+      }
+
+      .notification-item {
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(200, 118, 42, 0.1);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .notification-item.unread {
+        background: rgba(200, 118, 42, 0.08);
+      }
+
+      .notification-item:hover {
+        background: rgba(200, 118, 42, 0.12);
+        transform: translateX(4px);
+      }
+
+      .notification-item-title {
+        font-weight: 500;
+        font-size: 0.875rem;
+        margin-bottom: 4px;
+      }
+
+      .notification-item-time {
+        font-size: 0.75rem;
+        color: var(--color-journal-muted);
+      }
+
+      .notification-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 200px;
+        color: var(--color-journal-muted);
+        font-size: 0.875rem;
+      }
+
       /* ─── Scrollbar refinement ─── */
       ::-webkit-scrollbar {
         width: 6px;
@@ -303,6 +509,178 @@ service cloud.firestore {
       ::-webkit-scrollbar-thumb {
         background: #d4cec7;
         border-radius: 3px;
+      }
+
+      /* ─── DARK MODE STYLES ─── */
+      /* Apply to all elements when dark mode is active */
+      [data-theme="dark"] {
+        color-scheme: dark;
+        background-color: #1a1917;
+        color: #f5f5f5;
+      }
+
+      [data-theme="dark"] body {
+        background-color: #1a1917 !important;
+        color: #f5f5f5 !important;
+      }
+
+      /* All text elements turn white in dark mode */
+      [data-theme="dark"] h1,
+      [data-theme="dark"] h2,
+      [data-theme="dark"] h3,
+      [data-theme="dark"] h4,
+      [data-theme="dark"] h5,
+      [data-theme="dark"] h6 {
+        color: #f5f5f5 !important;
+      }
+
+      [data-theme="dark"] p,
+      [data-theme="dark"] span,
+      [data-theme="dark"] label,
+      [data-theme="dark"] div {
+        color: #f5f5f5;
+      }
+
+      [data-theme="dark"] button {
+        color: #f5f5f5;
+      }
+
+      [data-theme="dark"] .tab-active {
+        color: #fbbf24 !important;
+      }
+
+      [data-theme="dark"] .tab-inactive {
+        color: #b0b0b0 !important;
+      }
+
+      [data-theme="dark"] input,
+      [data-theme="dark"] textarea {
+        color: #f5f5f5 !important;
+        background: #2d2a26 !important;
+        border-color: #3d3a36 !important;
+      }
+
+      [data-theme="dark"] input::placeholder,
+      [data-theme="dark"] textarea::placeholder {
+        color: #b0b0b0 !important;
+      }
+
+      [data-theme="dark"] .nav-icon {
+        border-color: #3d3a36;
+        color: #f5f5f5;
+      }
+
+      [data-theme="dark"] .nav-pill {
+        border-color: #3d3a36 !important;
+        background: #2d2a26 !important;
+        color: #f5f5f5 !important;
+      }
+
+      [data-theme="dark"] .nav-pill:hover {
+        background: #4a3f1f !important;
+        border-color: #fbbf24 !important;
+      }
+
+      [data-theme="dark"] .dropdown-content,
+      [data-theme="dark"] .notification-panel {
+        background: #2d2a26 !important;
+        border-color: #3d3a36 !important;
+        color: #f5f5f5 !important;
+      }
+
+      [data-theme="dark"] .profile-menu-item {
+        color: #f5f5f5 !important;
+        background: transparent;
+      }
+
+      [data-theme="dark"] .profile-menu-item:hover {
+        background: rgba(251, 191, 36, 0.1) !important;
+      }
+
+      [data-theme="dark"] .msg-error {
+        background: #7f1d1d !important;
+        border-color: #991b1b !important;
+        color: #fecaca !important;
+      }
+
+      [data-theme="dark"] .msg-success {
+        background: #1b4332 !important;
+        border-color: #2d6a4f !important;
+        color: #95d5b2 !important;
+      }
+
+      [data-theme="dark"] .modal-overlay {
+        background: rgba(0, 0, 0, 0.7) !important;
+      }
+
+      [data-theme="dark"] .mood-btn {
+        border-color: #3d3a36 !important;
+        background: #2d2a26 !important;
+        color: #f5f5f5 !important;
+      }
+
+      [data-theme="dark"] .mood-btn.mood-selected {
+        background: #4a3f1f !important;
+        border-color: #fbbf24 !important;
+      }
+
+      [data-theme="dark"] .entry-card,
+      [data-theme="dark"] .entry-item {
+        background: #2d2a26 !important;
+        border-color: #3d3a36 !important;
+        color: #f5f5f5 !important;
+      }
+
+      [data-theme="dark"] .entry-card:hover,
+      [data-theme="dark"] .entry-item:hover {
+        border-color: #fbbf24 !important;
+      }
+
+      [data-theme="dark"] .notification-item {
+        color: #f5f5f5 !important;
+        border-bottom-color: rgba(251, 191, 36, 0.1) !important;
+      }
+
+      [data-theme="dark"] .notification-item.unread {
+        background: rgba(251, 191, 36, 0.08) !important;
+      }
+
+      [data-theme="dark"] .notification-item-time {
+        color: #b0b0b0 !important;
+      }
+
+      [data-theme="dark"] .notification-item-title {
+        color: #f5f5f5 !important;
+      }
+
+      [data-theme="dark"] .notification-panel-header {
+        border-bottom-color: #3d3a36 !important;
+      }
+
+      [data-theme="dark"] .tag {
+        background: #4a3f1f !important;
+        color: #f5f5f5 !important;
+      }
+
+      [data-theme="dark"] ::-webkit-scrollbar-thumb {
+        background: #5a5450;
+      }
+
+      /* Dark mode header styling */
+      [data-theme="dark"] header {
+        background: rgba(26, 25, 23, 0.95) !important;
+        border-color: #3d3a36 !important;
+      }
+
+      /* Journal body text in dark mode */
+      [data-theme="dark"] .journal-body,
+      [data-theme="dark"] .journal-textarea {
+        color: #f5f5f5 !important;
+      }
+
+      /* Empty state in dark mode */
+      [data-theme="dark"] .empty-state {
+        color: #b0b0b0 !important;
       }
     </style>
   </head>
@@ -608,8 +986,9 @@ service cloud.firestore {
         "
       >
         <div
-          class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between"
+          class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between"
         >
+          <!-- Left: Logo + Title -->
           <div class="flex items-center gap-2.5">
             <svg
               width="22"
@@ -626,41 +1005,131 @@ service cloud.firestore {
               <path d="M12 17c-2-4-2-8 0-13" />
             </svg>
             <span
-              class="font-semibold text-base tracking-tight"
+              class="font-semibold text-base tracking-tight hidden sm:inline"
               style="
                 font-family: var(--font-serif);
                 color: var(--color-journal-ink);
               "
             >
-              Private Digital Journal
+              My Journal
             </span>
           </div>
-          <div class="flex items-center gap-3">
-            <!-- User email display -->
-            <span
-              id="header-email"
-              class="text-xs hidden sm:block"
-              style="color: var(--color-journal-muted)"
-            ></span>
-            <!-- Sign out button -->
+
+          <!-- Right: Pro Nav Bar -->
+          <div class="flex items-center gap-2">
+            <!-- Theme Toggle -->
             <button
-              onclick="handleSignOut()"
-              class="text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-200"
-              style="
-                border: 1px solid var(--color-journal-border);
-                color: var(--color-journal-muted);
-              "
-              onmouseover="
-                this.style.borderColor = 'var(--color-journal-amber)';
-                this.style.color = 'var(--color-journal-amber)';
-              "
-              onmouseout="
-                this.style.borderColor = 'var(--color-journal-border)';
-                this.style.color = 'var(--color-journal-muted)';
-              "
+              id="theme-toggle"
+              onclick="handleThemeToggle()"
+              title="Toggle dark mode"
+              class="nav-icon"
+              aria-label="Theme toggle"
             >
-              Sign Out
+              <span id="theme-icon">🌙</span>
             </button>
+
+            <!-- Quick Journal -->
+            <button
+              id="quick-journal"
+              onclick="quickAccessJournal()"
+              class="nav-icon"
+              title="Quick access to journal"
+              aria-label="Quick access journal"
+            >
+              📖
+            </button>
+
+            <!-- Notifications -->
+            <div
+              id="notifications-container"
+              class="nav-notifications"
+              style="position: relative"
+            >
+              <button
+                id="notification-bell"
+                onclick="toggleNotificationPanel()"
+                class="nav-icon"
+                aria-label="Notifications"
+              >
+                🔔
+                <span id="notification-badge" class="badge badge-hidden"
+                  >0</span
+                >
+              </button>
+
+              <div
+                id="notification-panel"
+                class="notification-panel"
+                style="display: none"
+              >
+                <div class="notification-panel-header">
+                  <h3 style="margin: 0; font-size: 0.95rem">
+                    📬 Notifications
+                  </h3>
+                  <button
+                    onclick="closeNotificationPanel()"
+                    class="close-btn"
+                    style="
+                      background: none;
+                      border: none;
+                      cursor: pointer;
+                      font-size: 16px;
+                      padding: 0;
+                    "
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div id="notification-list" class="notification-list"></div>
+                <div
+                  id="notification-empty"
+                  class="notification-empty"
+                  style="display: none"
+                >
+                  <p style="margin: 0">No notifications yet</p>
+                  <p style="font-size: 0.75rem; opacity: 0.5; margin-top: 4px">
+                    You're all caught up! 🎉
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Profile Menu -->
+            <div
+              id="profile-dropdown"
+              class="nav-dropdown"
+              style="position: relative"
+            >
+              <button
+                id="profile-trigger"
+                onclick="toggleProfileMenu()"
+                class="nav-pill"
+                aria-label="User profile menu"
+              >
+                <span id="profile-avatar" style="font-size: 16px">👤</span>
+                <span
+                  id="profile-email-preview"
+                  style="
+                    font-size: 0.8rem;
+                    max-width: 80px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    display: none;
+                  "
+                >
+                  ...
+                </span>
+                <span class="profile-caret">▼</span>
+              </button>
+
+              <div
+                id="profile-menu-content"
+                class="dropdown-content profile-menu"
+                style="display: none"
+              >
+                <!-- Dynamically injected -->
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -1544,9 +2013,13 @@ service cloud.firestore {
         updateDoc,
         deleteDoc,
         getDocs,
+        getDoc,
+        setDoc,
         query,
         where,
         orderBy,
+        limit,
+        onSnapshot,
         serverTimestamp,
         Timestamp,
       } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
@@ -1679,6 +2152,17 @@ service cloud.firestore {
         currentEntryData: null,
         previousScreen: null,
         currentMood: null,
+        theme: "light",
+        themeInitialized: false,
+        notifications: {
+          items: [],
+          unreadCount: 0,
+          panelOpen: false,
+          listeners: {},
+        },
+        userSettings: {
+          loaded: false,
+        },
       };
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -1702,6 +2186,8 @@ service cloud.firestore {
           }
         });
         window.scrollTo({ top: 0, behavior: "instant" });
+        // Re-apply theme when switching screens
+        applyTheme(state.theme);
       }
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -1982,6 +2468,378 @@ service cloud.firestore {
       window.hideSparklineTooltip = hideSparklineTooltip;
 
       // ─────────────────────────────────────────────────────────────────────────
+      // TOP NAVIGATION: THEME TOGGLE (Dark Mode)
+      // ─────────────────────────────────────────────────────────────────────────
+      async function handleThemeToggle() {
+        const uid = state.currentUser?.uid;
+        if (!uid) return;
+
+        const btn = document.getElementById("theme-toggle");
+        if (btn.disabled) return;
+
+        btn.disabled = true;
+        const newTheme = state.theme === "light" ? "dark" : "light";
+
+        // Apply immediately to local state and DOM for a snappy UI
+        state.theme = newTheme;
+        applyTheme(newTheme);
+        localStorage.setItem(`theme_${uid}`, newTheme);
+
+        // Attempt background sync to Firestore
+        // (If it fails due to Firebase rules, we gracefully ignore so local UX isn't broken)
+        try {
+          const userSettingsRef = doc(
+            db,
+            "users",
+            uid,
+            "settings",
+            "preferences",
+          );
+          await setDoc(
+            userSettingsRef,
+            { theme: newTheme, updatedAt: serverTimestamp() },
+            { merge: true },
+          );
+        } catch (err) {
+          console.warn("Notice: Cloud sync for theme failed. Local preference will still be used.", err.code);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      function applyTheme(theme) {
+        if (!theme || (theme !== "dark" && theme !== "light")) {
+          console.warn("Invalid theme value:", theme);
+          return;
+        }
+
+        const icon = document.getElementById("theme-icon");
+        const html = document.documentElement;
+        const body = document.body;
+
+        if (theme === "dark") {
+          html.setAttribute("data-theme", "dark");
+          html.style.colorScheme = "dark";
+
+          // Update CSS custom properties for dynamic inline-styled elements
+          html.style.setProperty("--color-journal-bg", "#1a1917");
+          html.style.setProperty("--color-journal-surface", "#2d2a26");
+          html.style.setProperty("--color-journal-border", "#3d3a36");
+          html.style.setProperty("--color-journal-muted", "#b0b0b0");
+          html.style.setProperty("--color-journal-ink", "#f5f5f5");
+          html.style.setProperty("--color-journal-amber", "#fbbf24");
+          html.style.setProperty("--color-journal-amber-lt", "#4a3f1f");
+          html.style.setProperty("--color-journal-amber-md", "#d97706");
+          html.style.setProperty("--color-journal-prompt", "#2a2520");
+          html.style.setProperty("--color-journal-danger-lt", "#450a0a");
+
+          body.style.backgroundColor = "#1a1917";
+          body.style.color = "#f5f5f5";
+          html.style.backgroundColor = "#1a1917";
+          html.style.color = "#f5f5f5";
+
+          // Update all sticky headers to dark background
+          document.querySelectorAll("header").forEach(h => {
+            h.style.background = "rgba(26, 25, 23, 0.95)";
+            h.style.borderColor = "#3d3a36";
+          });
+
+          if (icon) icon.textContent = "☀️";
+          html.classList.add("dark-mode");
+        } else {
+          html.removeAttribute("data-theme");
+          html.style.colorScheme = "light";
+
+          html.style.setProperty("--color-journal-bg", "#faf8f5");
+          html.style.setProperty("--color-journal-surface", "#ffffff");
+          html.style.setProperty("--color-journal-border", "#e8e2d9");
+          html.style.setProperty("--color-journal-muted", "#9c9189");
+          html.style.setProperty("--color-journal-ink", "#2c2825");
+          html.style.setProperty("--color-journal-amber", "#c8762a");
+          html.style.setProperty("--color-journal-amber-lt", "#fef3e2");
+          html.style.setProperty("--color-journal-amber-md", "#f5c97a");
+          html.style.setProperty("--color-journal-prompt", "#fffbf3");
+          html.style.setProperty("--color-journal-danger-lt", "#fef2f2");
+
+          body.style.backgroundColor = "#faf8f5";
+          body.style.color = "#2c2825";
+          html.style.backgroundColor = "#faf8f5";
+          html.style.color = "#2c2825";
+
+          // Restore all sticky headers to light background
+          document.querySelectorAll("header").forEach(h => {
+            h.style.background = "rgba(250, 248, 245, 0.92)";
+            h.style.borderColor = "var(--color-journal-border)";
+          });
+
+          if (icon) icon.textContent = "🌙";
+          html.classList.remove("dark-mode");
+        }
+
+        state.theme = theme;
+      }
+
+      async function initTheme() {
+        const uid = state.currentUser?.uid;
+        if (!uid) return;
+
+        // Guard: Skip if already initialized in this session
+        if (state.themeInitialized) {
+          // Re-apply the current theme (in case DOM rebuilt)
+          applyTheme(state.theme);
+          return;
+        }
+
+        // Check localStorage first (fast, no network)
+        const savedTheme = localStorage.getItem(`theme_${uid}`);
+        if (savedTheme === "dark" || savedTheme === "light") {
+          state.theme = savedTheme;
+          applyTheme(savedTheme);
+          state.themeInitialized = true;
+          return;
+        }
+
+        // Fall back to Firestore
+        try {
+          const userSettingsRef = doc(
+            db,
+            "users",
+            uid,
+            "settings",
+            "preferences",
+          );
+          const snap = await getDoc(userSettingsRef);
+          const theme = snap.exists() ? snap.data().theme || "light" : "light";
+
+          if (theme === "dark" || theme === "light") {
+            state.theme = theme;
+            localStorage.setItem(`theme_${uid}`, theme);
+            applyTheme(theme);
+          } else {
+            state.theme = "light";
+            applyTheme("light");
+          }
+        } catch (err) {
+          console.warn("Theme init failed, defaulting to light:", err);
+          state.theme = "light";
+          applyTheme("light");
+        }
+
+        state.themeInitialized = true;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // TOP NAVIGATION: PROFILE MENU
+      // ─────────────────────────────────────────────────────────────────────────
+      function toggleProfileMenu() {
+        const dropdown = document.getElementById("profile-dropdown");
+        const content = document.getElementById("profile-menu-content");
+        const isOpen = content.style.display !== "none";
+
+        if (isOpen) {
+          content.style.display = "none";
+          dropdown.classList.remove("open");
+        } else {
+          content.style.display = "block";
+          dropdown.classList.add("open");
+        }
+      }
+
+      function renderUserProfileMenu() {
+        const menu = document.getElementById("profile-menu-content");
+        const previewSpan = document.getElementById("profile-email-preview");
+
+        if (!state.currentUser) return;
+
+        const email = state.currentUser.email;
+        previewSpan.textContent = email.split("@")[0] + "@...";
+        previewSpan.style.display = "inline";
+
+        menu.innerHTML = `
+          <div style="padding: 12px 14px; border-bottom: 1px solid var(--color-journal-border);">
+            <p style="font-weight: 500; font-size: 0.875rem; margin: 0; color: var(--color-journal-ink);">
+              ${escapeHtml(email)}
+            </p>
+            <p style="font-size: 0.75rem; color: var(--color-journal-muted); margin: 4px 0 0 0;">
+              Account
+            </p>
+          </div>
+          <button 
+            onclick="handleSignOut(); closeProfileMenu()" 
+            class="profile-menu-item"
+            style="color: var(--color-journal-danger);"
+          >
+            🚪 Sign Out
+          </button>
+        `;
+      }
+
+      function closeProfileMenu() {
+        document.getElementById("profile-menu-content").style.display = "none";
+        document.getElementById("profile-dropdown").classList.remove("open");
+      }
+
+      async function loadUserSettings() {
+        const uid = state.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+          const settingsRef = doc(db, "users", uid, "settings", "preferences");
+          const snap = await getDoc(settingsRef);
+
+          if (snap.exists()) {
+            state.userSettings = { loaded: true, ...snap.data() };
+          } else {
+            await setDoc(settingsRef, {
+              theme: "light",
+              notificationPreferences: { allEntryEvents: true },
+              createdAt: serverTimestamp(),
+            });
+            state.userSettings = {
+              loaded: true,
+              theme: "light",
+              notificationPreferences: { allEntryEvents: true },
+            };
+          }
+        } catch (err) {
+          console.error("Failed to load user settings:", err);
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // TOP NAVIGATION: NOTIFICATIONS
+      // ─────────────────────────────────────────────────────────────────────────
+      async function setupNotificationsListener() {
+        const uid = state.currentUser?.uid;
+        if (!uid || state.notifications.listeners.main) return;
+
+        try {
+          const notifRef = collection(db, `notifications/${uid}/events`);
+          const unsubscribe = onSnapshot(
+            query(notifRef, orderBy("createdAt", "desc"), limit(50)),
+            (snapshot) => {
+              state.notifications.items = snapshot.docs.map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+              }));
+
+              state.notifications.unreadCount =
+                state.notifications.items.filter((n) => !n.read).length;
+
+              updateNotificationBadge();
+              if (state.notifications.panelOpen) {
+                renderNotificationPanel();
+              }
+            },
+          );
+
+          state.notifications.listeners.main = unsubscribe;
+        } catch (err) {
+          console.error("Notifications listener setup failed:", err);
+        }
+      }
+
+      function updateNotificationBadge() {
+        const badge = document.getElementById("notification-badge");
+        const count = state.notifications.unreadCount;
+
+        if (count > 0) {
+          badge.textContent = count > 99 ? "99+" : count;
+          badge.classList.remove("badge-hidden");
+        } else {
+          badge.classList.add("badge-hidden");
+        }
+      }
+
+      function toggleNotificationPanel() {
+        const panel = document.getElementById("notification-panel");
+        state.notifications.panelOpen = panel.style.display === "none";
+
+        if (state.notifications.panelOpen) {
+          panel.style.display = "flex";
+          renderNotificationPanel();
+        } else {
+          panel.style.display = "none";
+        }
+      }
+
+      function closeNotificationPanel() {
+        document.getElementById("notification-panel").style.display = "none";
+        state.notifications.panelOpen = false;
+      }
+
+      function renderNotificationPanel() {
+        const list = document.getElementById("notification-list");
+        const empty = document.getElementById("notification-empty");
+
+        if (state.notifications.items.length === 0) {
+          list.style.display = "none";
+          empty.style.display = "flex";
+          return;
+        }
+
+        list.style.display = "block";
+        empty.style.display = "none";
+        list.innerHTML = state.notifications.items
+          .map(
+            (notif) => `
+          <div 
+            class="notification-item ${notif.read ? "" : "unread"}"
+            onclick="openViewEntry('${escapeHtml(notif.entryId)}'); closeNotificationPanel();"
+          >
+            <div class="notification-item-title">
+              ${notif.type === "entry_created" ? "✍️ New Entry:" : "📝 Updated:"} 
+              ${escapeHtml(notif.entryTitle || "Untitled")}
+            </div>
+            <div class="notification-item-time">
+              ${formatDateShort(notif.createdAt)}
+            </div>
+          </div>
+        `,
+          )
+          .join("");
+      }
+
+      async function createNotification(type, entryId, entryTitle) {
+        const uid = state.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+          await addDoc(collection(db, `notifications/${uid}/events`), {
+            type,
+            entryId,
+            entryTitle,
+            createdAt: serverTimestamp(),
+            read: false,
+          });
+        } catch (err) {
+          console.error("Failed to create notification:", err);
+        }
+      }
+
+      function teardownNotificationsListener() {
+        if (state.notifications.listeners.main) {
+          state.notifications.listeners.main();
+          state.notifications.listeners.main = null;
+        }
+        state.notifications.items = [];
+        state.notifications.unreadCount = 0;
+        closeNotificationPanel();
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // TOP NAVIGATION: QUICK JOURNAL ACCESS
+      // ─────────────────────────────────────────────────────────────────────────
+      window.quickAccessJournal = function () {
+        const dashboardScreen = document.getElementById("screen-dashboard");
+        if (dashboardScreen.classList.contains("screen-active")) {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else {
+          loadAndShowDashboard();
+        }
+      };
+
+      // ─────────────────────────────────────────────────────────────────────────
       // AUTHENTICATION HANDLERS
       // ─────────────────────────────────────────────────────────────────────────
       window.handleLogin = async function () {
@@ -2055,7 +2913,13 @@ service cloud.firestore {
 
         if (user) {
           state.currentUser = user;
-          document.getElementById("header-email").textContent = user.email;
+
+          // Initialize Pro Nav features
+          await initTheme();
+          await loadUserSettings();
+          await setupNotificationsListener();
+          renderUserProfileMenu();
+
           await loadAndShowDashboard();
         } else {
           state.currentUser = null;
@@ -2063,6 +2927,17 @@ service cloud.firestore {
           state.currentEntryId = null;
           state.currentEntryData = null;
           state.currentMood = null;
+          state.theme = "light";
+          state.themeInitialized = false; // Reset so next login restores saved theme
+          state.notifications.items = [];
+          state.notifications.unreadCount = 0;
+
+          // Reset theme to light on sign-out
+          applyTheme("light");
+
+          // Cleanup listeners
+          teardownNotificationsListener();
+          closeProfileMenu();
 
           document.getElementById("login-email").value = "";
           document.getElementById("login-password").value = "";
@@ -2135,6 +3010,9 @@ service cloud.firestore {
             document.getElementById("entry-count-label").textContent =
               `${count} ${count === 1 ? "entry" : "entries"}`;
           }
+
+          // Re-apply theme after DOM rebuild to ensure persistence
+          applyTheme(state.theme);
         } catch (err) {
           document.getElementById("dashboard-loading").classList.add("hidden");
           showMessage(
@@ -2265,7 +3143,14 @@ service cloud.firestore {
             entryData.mood = state.currentMood;
           }
 
-          await addDoc(collection(db, "entries"), entryData);
+          const docRef = await addDoc(collection(db, "entries"), entryData);
+
+          // Create notification
+          await createNotification(
+            "entry_created",
+            docRef.id,
+            title || "[Untitled]",
+          );
 
           showMessage("new-entry-success", "Entry saved! 🎉", "success");
           setButtonLoading("save-entry-btn", false, "Save Entry");
@@ -2414,6 +3299,13 @@ service cloud.firestore {
 
           await updateDoc(docRef, updateData);
 
+          // Create notification
+          await createNotification(
+            "entry_updated",
+            state.currentEntryId,
+            title || "[Untitled]",
+          );
+
           const idx = state.entries.findIndex(
             (e) => e.id === state.currentEntryId,
           );
@@ -2500,6 +3392,57 @@ service cloud.firestore {
       window.showDashboard = async function () {
         await loadAndShowDashboard();
       };
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // EXPOSE ALL TOP NAV FUNCTIONS TO WINDOW FOR HTML onclick HANDLERS
+      // ─────────────────────────────────────────────────────────────────────────
+      window.handleThemeToggle = handleThemeToggle;
+      window.applyTheme = applyTheme;
+      window.initTheme = initTheme;
+      window.toggleProfileMenu = toggleProfileMenu;
+      window.closeProfileMenu = closeProfileMenu;
+      window.renderUserProfileMenu = renderUserProfileMenu;
+      window.loadUserSettings = loadUserSettings;
+      window.setupNotificationsListener = setupNotificationsListener;
+      window.updateNotificationBadge = updateNotificationBadge;
+      window.toggleNotificationPanel = toggleNotificationPanel;
+      window.closeNotificationPanel = closeNotificationPanel;
+      window.renderNotificationPanel = renderNotificationPanel;
+      window.createNotification = createNotification;
+      window.teardownNotificationsListener = teardownNotificationsListener;
+      window.openViewEntry = openViewEntry;
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // CLOSE DROPDOWNS WHEN CLICKING OUTSIDE
+      // ─────────────────────────────────────────────────────────────────────────
+      document.addEventListener("click", (e) => {
+        const profileDropdown = document.getElementById("profile-dropdown");
+        const profileTrigger = document.getElementById("profile-trigger");
+        const notifContainer = document.getElementById(
+          "notifications-container",
+        );
+        const notifBell = document.getElementById("notification-bell");
+
+        // Close profile menu if clicking outside
+        if (
+          profileDropdown &&
+          !profileDropdown.contains(e.target) &&
+          profileTrigger &&
+          !profileTrigger.contains(e.target)
+        ) {
+          closeProfileMenu();
+        }
+
+        // Close notification panel if clicking outside
+        if (
+          notifContainer &&
+          !notifContainer.contains(e.target) &&
+          notifBell &&
+          !notifBell.contains(e.target)
+        ) {
+          closeNotificationPanel();
+        }
+      });
     </script>
   </body>
 </html>
