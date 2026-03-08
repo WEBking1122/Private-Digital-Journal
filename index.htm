@@ -1,4 +1,4 @@
-<!--
+﻿<!--
 ================================================================================
   THE FULL-STACK JOURNAL — A Private Digital Journal Web App
   Built with Firebase Authentication, Cloud Firestore, and Tailwind CSS v4
@@ -96,15 +96,16 @@ service cloud.firestore {
       name="description"
       content="Jotward — Your private space to think, reflect, and grow."
     />
+    <link rel="icon" href="https://skywavehost.com/wp-content/uploads/2026/03/fiveicon2.png" type="image/png" />
 
     <!-- Tailwind CSS v4 via Play CDN (official CDN for browser use) -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 
-    <!-- Google Fonts: Lora (serif, for journal body elegance) + Inter (sans-serif, for UI chrome) -->
+    <!-- Google Fonts: Lora (serif, for journal body elegance), Inter (sans-serif, for UI chrome), Space Grotesk (Company Name) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300..700&display=swap"
       rel="stylesheet"
     />
 
@@ -133,6 +134,14 @@ service cloud.firestore {
         background-color: var(--color-journal-bg);
         color: var(--color-journal-ink);
         min-height: 100vh;
+      }
+
+      /* ─── Company Font ─── */
+      .space-grotesk-company {
+        font-family: "Space Grotesk", sans-serif;
+        font-optical-sizing: auto;
+        font-weight: 700;
+        font-style: normal;
       }
 
       /* ─── Screen visibility helper ─── */
@@ -565,6 +574,10 @@ service cloud.firestore {
         color: #f5f5f5;
       }
 
+      [data-theme="dark"] button.text-black {
+        color: #000 !important;
+      }
+
       [data-theme="dark"] .tab-active {
         color: #fbbf24 !important;
       }
@@ -724,9 +737,8 @@ service cloud.firestore {
             style="height: 56px; width: auto; border-radius: 10px; display: block; margin: 0 auto 12px auto;"
           />
           <h1
-            class="text-3xl font-bold tracking-tight"
+            class="text-3xl font-bold tracking-tight space-grotesk-company"
             style="
-              font-family: var(--font-serif);
               color: var(--color-journal-ink);
             "
           >
@@ -1337,7 +1349,7 @@ service cloud.firestore {
           </div>
           <button
             onclick="showNewEntryScreen()"
-            class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+            class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-black transition-all duration-200"
             style="background: var(--color-journal-amber)"
             onmouseover="this.style.opacity = '0.9'"
             onmouseout="this.style.opacity = '1'"
@@ -1431,7 +1443,7 @@ service cloud.firestore {
           </p>
           <button
             onclick="showNewEntryScreen()"
-            class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+            class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-black transition-all duration-200"
             style="background: var(--color-journal-amber)"
           >
             <svg
