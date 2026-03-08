@@ -91,10 +91,10 @@ service cloud.firestore {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>The Full-Stack Journal</title>
+    <title>Jotward</title>
     <meta
       name="description"
-      content="Your private, secure digital journal — powered by Firebase."
+      content="Jotward — Your private space to think, reflect, and grow."
     />
 
     <!-- Tailwind CSS v4 via Play CDN (official CDN for browser use) -->
@@ -717,29 +717,12 @@ service cloud.firestore {
       >
         <!-- Brand header -->
         <div class="text-center mb-8">
-          <div
-            class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
-            style="
-              background: var(--color-journal-amber-lt);
-              border: 1px solid var(--color-journal-amber-md);
-            "
-          >
-            <!-- Quill icon (SVG inline) -->
-            <svg
-              width="28"
-              height="28"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#c8762a"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M20 4C16 4 6 8 4 20" />
-              <path d="M4 20c2-2 4-3 6-3s4 1 6 1c2 0 4-1 4-4" />
-              <path d="M12 17c-2-4-2-8 0-13" />
-            </svg>
-          </div>
+          <!-- Brand logo -->
+          <img
+            src="https://skywavehost.com/wp-content/uploads/2026/03/light-mode-logo.png"
+            alt="My Journal Logo"
+            style="height: 56px; width: auto; border-radius: 10px; display: block; margin: 0 auto 12px auto;"
+          />
           <h1
             class="text-3xl font-bold tracking-tight"
             style="
@@ -747,7 +730,7 @@ service cloud.firestore {
               color: var(--color-journal-ink);
             "
           >
-            Private Digital Journal
+            Jotward
           </h1>
           <p class="mt-2 text-sm" style="color: var(--color-journal-muted)">
             Your private space to think, reflect, and grow.
@@ -985,7 +968,7 @@ service cloud.firestore {
           style="color: var(--color-journal-muted)"
         >
           Your entries are encrypted in transit and private by default.<br />
-          Only you can access your journal.
+          Only you can access your Jotward.
         </p>
       </div>
     </div>
@@ -1037,30 +1020,21 @@ service cloud.firestore {
           </button>
 
           <!-- Logo -->
-          <div id="nav-logo" class="flex items-center gap-2.5">
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#c8762a"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M20 4C16 4 6 8 4 20" />
-              <path d="M4 20c2-2 4-3 6-3s4 1 6 1c2 0 4-1 4-4" />
-              <path d="M12 17c-2-4-2-8 0-13" />
-            </svg>
-            <span
-              class="font-semibold text-base tracking-tight hidden sm:inline"
-              style="
-                font-family: var(--font-serif);
-                color: var(--color-journal-ink);
-              "
-            >
-              My Journal
-            </span>
+          <div id="nav-logo" class="flex items-center">
+            <!-- Light mode logo (shown by default, hidden in dark mode) -->
+            <img
+              id="logo-light"
+              src="https://skywavehost.com/wp-content/uploads/2026/03/light-mode-logo.png"
+              alt="Jotward Logo"
+              style="height: 36px; width: auto; border-radius: 8px; display: block;"
+            />
+            <!-- Dark mode logo (hidden by default, shown in dark mode) -->
+            <img
+              id="logo-dark"
+              src="https://skywavehost.com/wp-content/uploads/2026/03/Dark-mode-logo.png"
+              alt="Jotward Logo"
+              style="height: 36px; width: auto; border-radius: 8px; display: none;"
+            />
           </div>
         </div>
 
@@ -1422,7 +1396,7 @@ service cloud.firestore {
                 animation: spin 0.7s linear infinite;
               "
             ></div>
-            <span class="text-sm">Loading your journal…</span>
+            <span class="text-sm">Loading your entries…</span>
           </div>
         </div>
 
@@ -1436,32 +1410,17 @@ service cloud.firestore {
 
         <!-- ── Empty state (shown when user has no entries) ── -->
         <div id="empty-state" class="empty-state hidden">
-          <div
-            class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
-            style="
-              background: var(--color-journal-amber-lt);
-              border: 1px solid var(--color-journal-amber-md);
-            "
-          >
-            <svg
-              width="28"
-              height="28"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#c8762a"
-              stroke-width="1.5"
-              stroke-linecap="round"
-            >
-              <path d="M20 4C16 4 6 8 4 20" />
-              <path d="M4 20c2-2 4-3 6-3s4 1 6 1c2 0 4-1 4-4" />
-              <path d="M12 17c-2-4-2-8 0-13" />
-            </svg>
-          </div>
+          <img
+            src="https://skywavehost.com/wp-content/uploads/2026/03/light-mode-logo.png"
+            id="empty-state-logo"
+            alt="Jotward Logo"
+            style="height: 64px; width: auto; border-radius: 10px; margin: 0 auto 12px; display: block;"
+          />
           <h3
             class="text-base font-semibold mb-2"
             style="color: var(--color-journal-ink)"
           >
-            Your journal is empty
+            Jotward is empty
           </h3>
           <p
             class="text-sm leading-relaxed max-w-xs mx-auto"
@@ -2806,6 +2765,16 @@ service cloud.firestore {
 
           if (icon) icon.textContent = "☀️";
           html.classList.add("dark-mode");
+
+          // Swap to dark mode logo
+          const logoDark = document.getElementById("logo-dark");
+          const logoLight = document.getElementById("logo-light");
+          if (logoDark) logoDark.style.display = "block";
+          if (logoLight) logoLight.style.display = "none";
+
+          // Also swap empty-state and auth logos
+          const emptyLogo = document.getElementById("empty-state-logo");
+          if (emptyLogo) emptyLogo.src = "https://skywavehost.com/wp-content/uploads/2026/03/Dark-mode-logo.png";
         } else {
           html.removeAttribute("data-theme");
           html.style.colorScheme = "light";
@@ -2834,6 +2803,16 @@ service cloud.firestore {
 
           if (icon) icon.textContent = "🌙";
           html.classList.remove("dark-mode");
+
+          // Swap to light mode logo
+          const logoDark = document.getElementById("logo-dark");
+          const logoLight = document.getElementById("logo-light");
+          if (logoDark) logoDark.style.display = "none";
+          if (logoLight) logoLight.style.display = "block";
+
+          // Also swap empty-state logo back to light
+          const emptyLogo = document.getElementById("empty-state-logo");
+          if (emptyLogo) emptyLogo.src = "https://skywavehost.com/wp-content/uploads/2026/03/light-mode-logo.png";
         }
 
         state.theme = theme;
@@ -3956,36 +3935,55 @@ service cloud.firestore {
           const credential = EmailAuthProvider.credential(state.currentUser.email, pwd);
           await reauthenticateWithCredential(state.currentUser, credential);
           
+          const uid = state.currentUser.uid;
+
           // 2. Delete all Journal Entries from Firestore
-          // We query all entries where userId == uid
+          // Entries are stored with field "uid" (not "userId")
           const entriesQuery = query(
             collection(db, "entries"),
-            where("userId", "==", state.currentUser.uid)
+            where("uid", "==", uid)
           );
           const entriesSnap = await getDocs(entriesQuery);
-          
-          // Delete them off firestore
           const deletePromises = [];
           entriesSnap.forEach((docSnap) => {
             deletePromises.push(deleteDoc(doc(db, "entries", docSnap.id)));
           });
           await Promise.all(deletePromises);
           
-          // 3. Delete user preferences/settings doc (optional but good practice)
-          await deleteDoc(doc(db, "users", state.currentUser.uid, "settings", "preferences"));
+          // 3. Delete user profile document (stores photoURL, display prefs, etc.)
+          try {
+            await deleteDoc(doc(db, "users", uid));
+          } catch (e) {
+            // Non-critical — proceed even if this doc doesn't exist
+            console.warn("Could not delete user doc:", e);
+          }
+
+          // 4. Delete notifications (if any)
+          try {
+            const notifQuery = query(collection(db, "notifications", uid, "items"));
+            const notifSnap = await getDocs(notifQuery);
+            const notifDeletes = [];
+            notifSnap.forEach((docSnap) => {
+              notifDeletes.push(deleteDoc(docSnap.ref));
+            });
+            await Promise.all(notifDeletes);
+          } catch (e) {
+            console.warn("Could not delete notifications:", e);
+          }
           
-          // 4. Finally, delete the Auth User Account
+          // 5. Finally, delete the Auth User Account
           await deleteUser(state.currentUser);
           
-          // Success. The onAuthStateChanged listener will catch the signout and route to auth screen.
+          // Success. The onAuthStateChanged listener will catch the signout
+          // and automatically redirect to the auth screen.
           hideDeleteAccountModal();
           
         } catch (error) {
           console.error("Error deleting account:", error);
           if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-            showMessage("delete-account-msg", "Incorrect password.");
+            showMessage("delete-account-msg", "Incorrect password. Please try again.");
           } else {
-            showMessage("delete-account-msg", "Failed to delete account. Please try again or contact support.");
+            showMessage("delete-account-msg", `Failed to delete account (${error.code || error.message}). Please try again.`);
           }
           setButtonLoading("btn-confirm-delete-account", false, "Permanently Delete");
         }
